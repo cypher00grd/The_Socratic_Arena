@@ -3,6 +3,7 @@ import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
 import { getTopicDomain } from '../lib/domainUtils';
+import { RankBadge } from '../lib/rankUtils';
 import { Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer } from 'recharts';
 
 const Dashboard = ({ user }) => {
@@ -135,9 +136,9 @@ const Dashboard = ({ user }) => {
             <div className="min-w-0">
               <p className="font-bold text-slate-100 text-lg truncate">{displayName}</p>
               <p className="text-sm text-slate-400 truncate">{displayEmail}</p>
-              <span className="inline-block mt-1 text-[10px] font-bold uppercase tracking-widest text-cyan-400 bg-cyan-950/40 border border-cyan-500/20 px-2 py-0.5 rounded">
-                Arena Member
-              </span>
+              <div className="mt-1.5 flex items-center">
+                <RankBadge elo={stats.elo} />
+              </div>
             </div>
           </div>
 

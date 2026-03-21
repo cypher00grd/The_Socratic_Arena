@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
-import { Shield, Swords, Bot, Square, Search, Users, Download, ArrowLeft, MessageCircle, Trophy, Loader2, Clock } from 'lucide-react';
+import { Shield, Swords, Bot, Square, Search, Users, Download, ArrowLeft, MessageCircle, Trophy, Loader2, Clock, Gavel, Scale } from 'lucide-react';
 import jsPDF from 'jspdf';
 
 /**
@@ -69,6 +69,17 @@ const DebateArena = ({
   const [topic, setTopic] = useState(initialTopic || '');
   const [localTranscript, setLocalTranscript] = useState([]);
   const [inputText, setInputText] = useState('');
+
+  // Phase 3: AI Judge Lifeline state
+  const [hasUsedLifeline, setHasUsedLifeline] = useState(false);
+  const [objectionLoadingId, setObjectionLoadingId] = useState(null);
+  const [interventions, setInterventions] = useState({});
+
+  const handleSummonAIJudge = (messageId) => {
+    if (hasUsedLifeline || playerRole === 'Spectator') return;
+    setObjectionLoadingId(messageId);
+    socket.emit('summon_ai_judge', { roomId, targetMessageId: messageId });
+  };
 
   useEffect(() => {
     const initArena = async () => {
@@ -253,6 +264,7 @@ const DebateArena = ({
     const handleWaitingForOpponent = () => setMatchStatus('searching');
 
     const handleSocketError = ({ message }) => {
+      setObjectionLoadingId(null); // Reset spinner on any error
       // If rejoining fails because the match is gone, redirect
       if (message && (message.includes('no longer exists') || message.includes('expired'))) {
         setErrorMsg('Match session expired or no longer available.');
@@ -260,6 +272,21 @@ const DebateArena = ({
       } else {
         window.alert(message || 'An error occurred');
       }
+    };
+
+    const handleAiProcessing = ({ caller, targetMessageId }) => {
+      if (caller === playerRole) setHasUsedLifeline(true);
+      setObjectionLoadingId(targetMessageId);
+      setIsAutoScrollEnabled(true);
+    };
+
+    const handleAiResult = (result) => {
+      setObjectionLoadingId(null);
+      setInterventions(prev => ({
+        ...prev,
+        [result.targetMessageId]: result
+      }));
+      setIsAutoScrollEnabled(true);
     };
 
     socket.on('match_found', handleMatchFound);
@@ -274,6 +301,9 @@ const DebateArena = ({
     socket.on('error', handleSocketError);
     socket.on('disconnect', handleSelfDisconnect);
     socket.on('connect', handleSelfReconnect);
+    socket.on('ai_intervention_processing', handleAiProcessing);
+    socket.on('ai_intervention_result', handleAiResult);
+    socket.on('ai_intervention', handleAiResult);
 
     // 🚀 PROACTIVE REJOIN: If we mount and socket is already connected, rejoin immediately
     if (socket.connected && user?.id && roomId) {
@@ -303,6 +333,9 @@ const DebateArena = ({
       socket.off('error', handleSocketError);
       socket.off('disconnect', handleSelfDisconnect);
       socket.off('connect', handleSelfReconnect);
+      socket.off('ai_intervention_processing', handleAiProcessing);
+      socket.off('ai_intervention_result', handleAiResult);
+      socket.off('ai_intervention', handleAiResult);
     };
   }, [socket]);
 
@@ -546,6 +579,49 @@ const DebateArena = ({
                           isLastMessage={index === localTranscript?.length - 1}
                           scrollToBottom={scrollToBottomSafe}
                         />
+
+                        {/* AI Judge Interventions (Result or Processing) */}
+                        {objectionLoadingId === message?.id && (
+                           <div className="mt-3 p-3 rounded-xl border border-amber-500/30 bg-amber-950/20 text-amber-200 animate-pulse">
+                               <div className="flex items-center gap-2 mb-1">
+                                   <Loader2 className="h-4 w-4 animate-spin text-amber-500" />
+                                   <span className="text-xs font-bold uppercase text-amber-500">AI Judge Deliberating...</span>
+                               </div>
+                               <p className="text-sm italic opacity-80">"Analyzing the logical structure and factual merit of this claim. Please wait."</p>
+                           </div>
+                        )}
+
+                        {interventions[message?.id] && (
+                           <div className="mt-3 p-3 rounded-xl border border-rose-500/50 bg-rose-950/30 text-rose-200">
+                               <div className="flex items-center gap-2 mb-1">
+                                   <Scale className="h-4 w-4 text-amber-500" />
+                                   <span className="text-xs font-bold uppercase text-amber-500">AI Judge Ruling</span>
+                               </div>
+                               {interventions[message?.id].flagged ? (
+                                   <p className="text-sm">
+                                     <span className="font-bold text-rose-400 uppercase mr-2">[{interventions[message.id].type}]</span>
+                                     {interventions[message.id].reason}
+                                   </p>
+                               ) : (
+                                   <p className="text-sm text-emerald-400 italic">"Objection overruled. The claim holds logical merit."</p>
+                               )}
+                           </div>
+                        )}
+
+                        {/* Objection Button */}
+                        {playerRole !== 'Spectator' && message?.speaker !== playerRole && !hasUsedLifeline && !interventions[message?.id] && (
+                            <button
+                                onClick={() => handleSummonAIJudge(message?.id)}
+                                disabled={objectionLoadingId !== null}
+                                className="mt-3 text-xs font-bold uppercase text-slate-500 hover:text-amber-500 flex items-center gap-1 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                {objectionLoadingId === message?.id ? (
+                                    <><Loader2 className="h-3 w-3 animate-spin text-amber-500"/> Evaluating...</>
+                                ) : (
+                                    <><Gavel className="h-3 w-3" /> Objection!</>
+                                )}
+                            </button>
+                        )}
                       </div>
                     </div>
                   );

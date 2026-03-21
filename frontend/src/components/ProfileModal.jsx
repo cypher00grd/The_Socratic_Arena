@@ -1,22 +1,35 @@
 import { useEffect, useState, useRef } from 'react';
-import { X, LogOut, Shield, Wifi, Copy, CheckCircle2, ArrowLeft } from 'lucide-react';
+import { X, LogOut, Shield, Wifi, Copy, CheckCircle2, ArrowLeft, UserPlus, UserCheck } from 'lucide-react';
 import { supabase } from '../lib/supabaseClient';
 import { useNavigate } from 'react-router-dom';
+import { getRankInfo } from '../lib/rankUtils';
 
-const ProfileModal = ({ isOpen, onClose, currentUser }) => {
+const ProfileModal = ({ isOpen, onClose, viewUser, currentUserId }) => {
     const navigate = useNavigate();
     const [stats, setStats] = useState({ elo: 1000, matches: 0 });
     const [copied, setCopied] = useState(false);
+    const [isFollowing, setIsFollowing] = useState(false);
     const modalRef = useRef(null);
 
     useEffect(() => {
-        if (!isOpen || !currentUser) return;
+        if (!isOpen || !viewUser) return;
         const fetchStats = async () => {
-            const { data } = await supabase.rpc('get_user_stats', { p_user_id: currentUser.id });
+            const { data } = await supabase.rpc('get_user_stats', { p_user_id: viewUser.id });
             if (data) setStats({ elo: data.elo_rating || 1000, matches: data.total_matches || 0 });
         };
+        const fetchFollowStatus = async () => {
+            if (!currentUserId || viewUser.id === currentUserId) return;
+            const { data } = await supabase
+                .from('user_follows')
+                .select('id')
+                .eq('follower_id', currentUserId)
+                .eq('followed_id', viewUser.id)
+                .maybeSingle();
+            setIsFollowing(!!data);
+        };
         fetchStats();
-    }, [isOpen, currentUser]);
+        fetchFollowStatus();
+    }, [isOpen, viewUser, currentUserId]);
 
     useEffect(() => {
         const handleOutsideClick = (event) => {
@@ -34,19 +47,13 @@ const ProfileModal = ({ isOpen, onClose, currentUser }) => {
         };
     }, [isOpen, onClose]);
 
-    if (!isOpen || !currentUser) return null;
+    if (!isOpen || !viewUser) return null;
 
-    const getRank = (rating) => {
-        if (rating < 1100) return { name: 'Bronze | Novice', color: 'text-amber-500', bg: 'bg-amber-500/10', border: 'border-amber-500/30' };
-        if (rating < 1300) return { name: 'Silver | Challenger', color: 'text-slate-300', bg: 'bg-slate-300/10', border: 'border-slate-300/30' };
-        if (rating < 1600) return { name: 'Gold | Gladiator', color: 'text-yellow-400', bg: 'bg-yellow-400/10', border: 'border-yellow-400/30' };
-        return { name: 'Diamond | Grandmaster', color: 'text-cyan-400', bg: 'bg-cyan-400/10', border: 'border-cyan-400/30' };
-    };
-
-    const rank = getRank(stats.elo);
+    const rank = getRankInfo(stats.elo);
+    const RankIcon = rank.Icon;
 
     const handleCopyId = () => {
-        navigator.clipboard.writeText(currentUser.id);
+        navigator.clipboard.writeText(viewUser.id);
         setCopied(true);
         setTimeout(() => setCopied(false), 2000);
     };
@@ -56,6 +63,19 @@ const ProfileModal = ({ isOpen, onClose, currentUser }) => {
         onClose();
         navigate('/login');
     };
+
+    const toggleFollow = async () => {
+        if (!currentUserId) return;
+        if (isFollowing) {
+            setIsFollowing(false);
+            await supabase.from('user_follows').delete().eq('follower_id', currentUserId).eq('followed_id', viewUser.id);
+        } else {
+            setIsFollowing(true);
+            await supabase.from('user_follows').insert({ follower_id: currentUserId, followed_id: viewUser.id });
+        }
+    };
+
+    const isOwnProfile = viewUser.id === currentUserId;
 
     return (
         <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 sm:p-6">
@@ -82,21 +102,21 @@ const ProfileModal = ({ isOpen, onClose, currentUser }) => {
                     {/* Floating Avatar */}
                     <div className="h-20 w-20 bg-slate-800 border-4 border-slate-900 rounded-full flex items-center justify-center shadow-lg z-10 -mt-10 mb-4">
                         <span className="text-3xl font-bold text-cyan-400 uppercase">
-                            {currentUser?.email?.charAt(0) || '?'}
+                            {viewUser.username ? viewUser.username.charAt(0) : (viewUser?.email?.charAt(0) || '?')}
                         </span>
                     </div>
 
                     {/* User Identity */}
                     <div className="text-center w-full mb-6">
-                        <h3 className="text-lg font-bold text-slate-100 truncate px-2">{currentUser?.email}</h3>
+                        <h3 className="text-lg font-bold text-slate-100 truncate px-2">{viewUser.username || viewUser?.email?.split('@')[0]}</h3>
                         <p className="text-sm text-cyan-400/80 font-medium mt-1">Socratic Arena Member</p>
                     </div>
 
                     {/* Professional Features */}
                     <div className="flex flex-col gap-3 w-full mb-6">
                         {/* Rank Badge */}
-                        <div className={`flex items-center gap-4 p-3 rounded-xl border ${rank.bg} ${rank.border}`}>
-                            <Shield className={`h-6 w-6 shrink-0 ${rank.color}`} />
+                        <div className={`flex items-center gap-4 p-3 rounded-xl border ${rank.bgColor} ${rank.borderColor}`}>
+                            <RankIcon className={`h-6 w-6 shrink-0 ${rank.color} ${rank.shadow}`} />
                             <div className="text-left overflow-hidden">
                                 <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Current Division</p>
                                 <p className={`text-sm font-bold truncate ${rank.color}`}>{rank.name}</p>
@@ -108,7 +128,7 @@ const ProfileModal = ({ isOpen, onClose, currentUser }) => {
                             <div className="flex items-center gap-4 overflow-hidden">
                                 <div className="overflow-hidden">
                                     <p className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">Socratic ID</p>
-                                    <p className="text-sm text-slate-300 font-mono truncate max-w-[180px]">{currentUser?.id?.split('-')[0]}...</p>
+                                    <p className="text-sm text-slate-300 font-mono truncate max-w-[180px]">{viewUser?.id?.split('-')[0]}...</p>
                                 </div>
                             </div>
                             {copied ? <CheckCircle2 className="h-5 w-5 text-emerald-400 shrink-0" /> : <Copy className="h-5 w-5 text-slate-500 group-hover:text-cyan-400 transition-colors shrink-0" />}
@@ -130,12 +150,29 @@ const ProfileModal = ({ isOpen, onClose, currentUser }) => {
                             <ArrowLeft className="h-5 w-5" /> Return
                         </button>
                         
-                        <button 
-                            onClick={handleSignOut} 
-                            className="flex-1 py-3 rounded-xl flex items-center justify-center gap-2 font-bold text-rose-400 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 transition-all"
-                        >
-                            <LogOut className="h-5 w-5" /> Sign Out
-                        </button>
+                        {isOwnProfile ? (
+                            <button 
+                                onClick={handleSignOut} 
+                                className="flex-1 py-3 rounded-xl flex items-center justify-center gap-2 font-bold text-rose-400 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 transition-all"
+                            >
+                                <LogOut className="h-5 w-5" /> Sign Out
+                            </button>
+                        ) : (
+                            <button 
+                                onClick={toggleFollow} 
+                                className={`flex-1 py-3 rounded-xl flex items-center justify-center gap-2 font-bold transition-all border ${
+                                    isFollowing 
+                                    ? 'text-cyan-400 bg-cyan-950/30 hover:bg-cyan-950/60 border-cyan-500/30' 
+                                    : 'text-indigo-300 bg-indigo-600/20 hover:bg-indigo-600/40 border-indigo-500/30'
+                                }`}
+                            >
+                                {isFollowing ? (
+                                    <><UserCheck className="h-5 w-5" /> Following</>
+                                ) : (
+                                    <><UserPlus className="h-5 w-5" /> Follow</>
+                                )}
+                            </button>
+                        )}
                     </div>
                 </div>
             </div>

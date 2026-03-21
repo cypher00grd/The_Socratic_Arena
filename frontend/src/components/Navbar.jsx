@@ -60,7 +60,8 @@ const Navbar = ({ user }) => {
       <ProfileModal 
         isOpen={isProfileOpen} 
         onClose={() => setIsProfileOpen(false)} 
-        currentUser={user} 
+        viewUser={user} 
+        currentUserId={user?.id}
       />
     </nav>
   );

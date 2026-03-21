@@ -75,28 +75,55 @@ async function evaluateDebate(transcript, matchId) {
 
     // 2. Call Gemini
     const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash", generationConfig: { responseMimeType: "application/json" } });
-    const prompt = `You are a strict master debate judge. Analyze this transcript. You MUST respond with ONLY a valid JSON object, no markdown wrappers, no extra text. Format exactly like this: { "critic": { "logic": <1-10>, "facts": <1-10>, "relevance": <1-10>, "feedback": "<short summary>" }, "defender": { "logic": <1-10>, "facts": <1-10>, "relevance": <1-10>, "feedback": "<short summary>" }, "overall_summary": "<1 liner description of the whole debate>" }\n\nDebate:\n${debateText}`;
+    const prompt = `You are a strict master debate judge. Analyze this transcript. You MUST respond with ONLY a valid JSON object. Format exactly like this:
+{
+  "critic": { "logic": <1-10>, "facts": <1-10>, "relevance": <1-10>, "feedback": "<short summary>" },
+  "defender": { "logic": <1-10>, "facts": <1-10>, "relevance": <1-10>, "feedback": "<short summary>" },
+  "overall_summary": "<1 liner description of the whole debate>",
+  "highlights": [
+    { "quote": "<exact quote from transcript>", "author_role": "critic", "context": "<brief reason why this was impactful>" },
+    { "quote": "<another quote>", "author_role": "defender", "context": "<brief reason>" },
+    { "quote": "<third quote>", "author_role": "critic or defender", "context": "<brief reason>" }
+  ]
+}
+
+Debate transcript:
+${debateText}`;
 
     const result = await model.generateContent(prompt);
+    const rawText = result.response.text();
     
-    // Safely strip markdown code blocks if the AI accidentally includes them
-    const rawResponse = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
-    const aiResponse = JSON.parse(rawResponse);
+    // STRIP MARKDOWN BEFORE PARSING:
+    const cleanedText = rawText.replace(/json/g, '').replace(/```/g, '').trim();
 
-    // 3. Update Supabase
-    const { error: updateError } = await supabase.from('matches').update({ 
-      ai_scores: aiResponse 
-    }).eq('id', matchId);
+    try {
+      const aiResponse = JSON.parse(cleanedText);
+      const { highlights, ...scoresOnly } = aiResponse;
 
-    if (updateError) {
-      console.error('[CRITICAL] Failed to save AI scores to Supabase:', updateError.message);
-      return;
+      // 3. Update Supabase
+      const { error: updateError } = await supabase.from('matches').update({ 
+        ai_scores: scoresOnly,
+        highlights: highlights || []
+      }).eq('id', matchId);
+
+      if (updateError) {
+        console.error('[CRITICAL] Failed to save AI scores/highlights to Supabase:', updateError.message);
+        return;
+      }
+      
+      console.log('Successfully confirmed AI scores and highlights saved to database!');
+    } catch (e) {
+      console.error("Failed to parse Highlights JSON:", e);
+      // Save an empty array if parsing completely fails so the frontend doesn't hang
+      await supabase.from('matches').update({ 
+        highlights: [],
+        ai_scores: { error: "Evaluation failed" } 
+      }).eq('id', matchId);
     }
-    
-    console.log('Successfully confirmed AI scores saved to database!');
-    console.log(`AI Evaluation complete for match ${matchId}`, aiResponse);
   } catch (err) {
     console.error('AI Evaluation failed:', err);
+    // Final failsafe to unlock frontend
+    await supabase.from('matches').update({ highlights: [] }).eq('id', matchId);
   }
 }
 
@@ -606,6 +633,19 @@ io.on('connection', (socket) => {
     socketId: socket.id,
   });
 
+  // Global VIP Online Broadcasting
+  socket.on('user_online', (userData) => {
+    if (!userData || !userData.id) return;
+    if (userData.elo_rating >= 1500) {
+      console.log(`[Global] 🌟 VIP Online: ${userData.email}`);
+      socket.broadcast.emit('global_announcement', {
+        type: 'online_vip',
+        user: userData,
+        message: `${userData.username || userData.email.split('@')[0]} has entered the Arena.`
+      });
+    }
+  });
+
   /**
    * Matchmaking: Join queue
    */  socket.on('join_queue', async ({ userId, topicId, topicTitle, preferredRole = 'Random' }) => {
@@ -692,7 +732,11 @@ io.on('connection', (socket) => {
         defenderTime: 300,
         transcript: [],
         status: 'active',
-        startTime: Date.now()
+        startTime: Date.now(),
+        lifelines: {
+          [critic.userId || critic.socketId]: 1,
+          [defender.userId || defender.socketId]: 1
+        }
       };
       
       io.to(roomId).emit('match_found', {
@@ -798,6 +842,78 @@ io.on('connection', (socket) => {
       activeSpeaker: room.activeSpeaker,
       lastSpeaker: playerRole
     });
+  });
+
+  /**
+   * Summon AI Judge (Objection Lifeline)
+   */
+  socket.on('summon_ai_judge', async ({ roomId, targetMessageId }) => {
+    const room = activeRooms[roomId];
+    if (!room || room.status !== 'active') return;
+
+    // Determine the caller's ID and role
+    const playerRole = room.players.critic === socket.id ? 'Critic' : 'Defender';
+    const callerId = playerRole === 'Critic' ? (room.critic_id || socket.id) : (room.defender_id || socket.id);
+
+    // Check Lifeline availability
+    if (!room.lifelines[callerId] || room.lifelines[callerId] <= 0) {
+      socket.emit('error', { message: 'You have already used your AI Objection for this match.' });
+      return;
+    }
+
+    // Find the target message
+    const targetMsg = room.transcript.find(m => m.id === targetMessageId);
+    if (!targetMsg) {
+      socket.emit('error', { message: 'Message not found.' });
+      return;
+    }
+
+    // Validate they are objecting to the opponent's message, not their own
+    if (targetMsg.speaker === playerRole) {
+      socket.emit('error', { message: 'You cannot object to your own message.' });
+      return;
+    }
+
+    // Consume the lifeline
+    room.lifelines[callerId] -= 1;
+
+    // Tell the room an objection is processing
+    io.to(roomId).emit('ai_intervention_processing', { caller: playerRole, targetMessageId });
+    console.log(`[summon_ai_judge] ${playerRole} used their lifeline on message ${targetMessageId}`);
+
+    try {
+      // Ensure your prompt asks for raw JSON only, no markdown:
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash", generationConfig: { responseMimeType: "application/json" } });
+      const prompt = `You are a strict master debate judge. Analyze this specific argument made in a debate about '${room.topic}'. 
+      Argument: "${targetMsg.text}"
+      
+      Analyze this statement for severe, undeniable logical fallacies (e.g., Ad Hominem, Strawman) or blatant factual inaccuracies.
+      If it is generally fine, return { "flagged": false }. 
+      If it is severely flawed, return { "flagged": true, "type": "fallacy" or "fact", "reason": "Brief, devastating 1-sentence explanation of why it is wrong." }.
+      Return ONLY valid JSON. Do not wrap in markdown block.`;
+
+      const result = await model.generateContent(prompt);
+      const rawResponse = result.response.text().replace(/```json/g, '').replace(/```/g, '').trim();
+      const aiResponse = JSON.parse(rawResponse);
+
+      // Emit intervention to room
+      io.to(roomId).emit('ai_intervention_result', {
+        targetMessageId,
+        caller: playerRole,
+        flagged: aiResponse.flagged,
+        type: aiResponse.type || null,
+        reason: aiResponse.reason || null
+      });
+    } catch (error) {
+      console.error("[Socket] AI Judge Error:", error);
+      // Refund the lifeline on error
+      room.lifelines[callerId] += 1;
+      // CRITICAL: Emit fallback to unlock the frontend UI
+      socket.emit('ai_intervention', { 
+          flagged: false, 
+          error: "The AI Judge is currently unavailable or failed to process." 
+      });
+    }
   });
 
   /**

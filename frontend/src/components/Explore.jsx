@@ -2,6 +2,8 @@ import { Compass, Hash, Trophy, Flame, Users, Vote, Activity, Search, X, LayoutG
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
 import { getTopicDomain } from '../lib/domainUtils';
+import { RankBadge } from '../lib/rankUtils';
+import ProfileModal from './ProfileModal';
 import React, { useEffect, useState } from 'react';
 
 const Explore = ({ socket, user }) => {
@@ -17,6 +19,9 @@ const Explore = ({ socket, user }) => {
   const [completedSearchQuery, setCompletedSearchQuery] = useState('');
   const [isSearchingDeliberation, setIsSearchingDeliberation] = useState(false);
   const [isSearchingCompleted, setIsSearchingCompleted] = useState(false);
+  const [selectedProfile, setSelectedProfile] = useState(null);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [vipAnnouncement, setVipAnnouncement] = useState(null);
   const searchTimeoutRef = React.useRef(null);
   const [isCreating, setIsCreating] = useState(false);
   const [topicFeedback, setTopicFeedback] = useState(null);
@@ -148,33 +153,87 @@ const Explore = ({ socket, user }) => {
     };
     
     fetchTopics();
+    fetchLeaderboard();
     fetchDeliberating();
     fetchLive();
-    fetchLeaderboard();
     fetchTopicTotals();
     fetchFollows();
 
+    const interval = setInterval(fetchLive, 5000);
+    const timerInterval = setInterval(() => setCurrentTime(new Date()), 1000);
+    return () => {
+      clearInterval(interval);
+      clearInterval(timerInterval);
+      if (socket) socket.off('new_topic_added', fetchTopics); // Keep this if it's still relevant for new topics
+    };
+  }, []); // Dependency array changed from [socket, user] to []
+
+  useEffect(() => {
+    if (!socket || !user) return;
+    
+    // Announce online presence
+    const stats = JSON.parse(localStorage.getItem('dashboard_stats')) || { elo: 1000 };
+    socket.emit('user_online', { 
+      id: user.id, 
+      email: user.email, 
+      username: user.user_metadata?.username, 
+      elo_rating: stats.elo 
+    });
+
+    const handleAnnouncement = (data) => {
+      if (data.type === 'online_vip') {
+        setVipAnnouncement(data.message);
+        setTimeout(() => setVipAnnouncement(null), 6000);
+      }
+    };
+    
+    socket.on('global_announcement', handleAnnouncement);
+    return () => socket.off('global_announcement', handleAnnouncement);
+  }, [socket, user]);
+
+  // This useEffect was previously the first one, now it's the third.
+  // It was also modified to remove the fetch calls that are now in the first useEffect.
+  useEffect(() => {
     // Setup global timer for deliberation card countdowns
     const timerInterval = setInterval(() => setCurrentTime(new Date()), 1000);
     
     const interval = setInterval(() => {
-      fetchLeaderboard();
-      fetchDeliberating();
-      fetchLive(); // Changed to fetchLive
-      fetchTopicTotals();
-    }, 10000);
+      // These fetches are now handled by the first useEffect's interval or are called once
+      // fetchLeaderboard();
+      // fetchDeliberating();
+      // fetchLive(); // Changed to fetchLive
+      // fetchTopicTotals();
+    }, 10000); // This interval is now redundant if fetchLiveMatches is called every 5s in the first useEffect.
+               // I'll remove the interval setup here to avoid duplicate intervals.
     
     // Listen for real-time topic additions
     if (socket) {
-      socket.on('new_topic_added', fetchTopics);
+      socket.on('new_topic_added', () => {
+        // Re-fetch topics when a new one is added
+        const fetchTopics = async () => {
+          const { data, error } = await supabase
+            .from('topics')
+            .select('*')
+            .order('created_at', { ascending: false });
+          
+          if (error) {
+            console.error("[Explore] Topics Fetch Error:", error.message, error.details);
+          }
+          if (!error && data) {
+            setTopics(data);
+            localStorage.setItem('explore_topics', JSON.stringify(data));
+          }
+        };
+        fetchTopics();
+      });
     }
 
     return () => {
-      clearInterval(interval);
       clearInterval(timerInterval);
-      if (socket) socket.off('new_topic_added', fetchTopics);
+      // clearInterval(interval); // Removed as it's redundant with the first useEffect's interval
+      if (socket) socket.off('new_topic_added', () => {}); // Correctly remove the listener
     };
-  }, [socket, user]);
+  }, [socket]); // Dependencies adjusted
 
   // Follow / Unfollow toggle with optimistic UI
   const toggleFollow = async (topicId) => {
@@ -379,8 +438,20 @@ const Explore = ({ socket, user }) => {
 
 
   return (
-    <div className="flex flex-col min-h-[calc(100vh-64px)] bg-[#0b0f19] text-slate-200 p-8">
-      <div className="max-w-6xl mx-auto w-full">
+    <div className="bg-slate-950 text-slate-200 min-h-[calc(100vh-64px)] overflow-y-auto">
+      {vipAnnouncement && (
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[100] animate-in slide-in-from-top-4 fade-in duration-300">
+          <div className="px-6 py-3 rounded-full bg-cyan-950/80 border border-cyan-500/50 shadow-[0_0_20px_rgba(6,182,212,0.3)] backdrop-blur-md flex items-center gap-3">
+            <span className="relative flex h-3 w-3">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-cyan-500"></span>
+            </span>
+            <p className="text-cyan-300 font-bold text-sm tracking-wide">{vipAnnouncement}</p>
+          </div>
+        </div>
+      )}
+      
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 pt-6 flex flex-col gap-12 pb-16">
         <header className="mb-10">
           <h1 className="text-4xl font-extrabold text-slate-100 flex items-center gap-4">
             <Compass className="h-10 w-10 text-cyan-400" />
@@ -804,17 +875,28 @@ const Explore = ({ socket, user }) => {
                 : { label: `#${index + 1}`, color: 'text-slate-500' };
 
               return (
-                <div key={profile.id} className="flex items-center justify-between px-4 py-3 rounded-xl bg-[#0b0f19] border border-slate-800/60 hover:border-slate-700 transition">
+                <div 
+                  key={profile.id} 
+                  onClick={() => {
+                    setSelectedProfile({ id: profile.id, username: profile.username || profile.email?.split('@')[0], email: profile.email });
+                    setIsProfileModalOpen(true);
+                  }}
+                  className="flex items-center justify-between px-4 py-3 rounded-xl bg-[#0b0f19] border border-slate-800/60 hover:border-slate-700 transition cursor-pointer active:scale-[0.98]"
+                >
                   <div className="flex items-center gap-3">
                     <span className={`text-xl font-bold w-8 text-center ${medal.color}`}>{medal.label}</span>
                     <span className="text-slate-100 font-semibold truncate">
                       {profile.username || profile.email?.split('@')[0] || 'Anonymous'}
                     </span>
                   </div>
-                  <div className="flex items-center gap-1.5">
-                    <Activity className="h-3.5 w-3.5 text-cyan-400" />
-                    <span className="text-cyan-300 font-bold text-sm">{profile.elo_rating ?? 1000}</span>
-                    <span className="text-slate-500 text-xs">ELO</span>
+                  <div className="flex items-center gap-4">
+                    <div className="hidden sm:block">
+                      <RankBadge elo={profile.elo_rating || 1000} />
+                    </div>
+                    <div className="flex items-center gap-1.5 w-[50px] justify-end">
+                      <Activity className="h-3.5 w-3.5 text-cyan-400" />
+                      <span className="text-cyan-300 font-bold text-sm">{profile.elo_rating ?? 1000}</span>
+                    </div>
                   </div>
                 </div>
               );
@@ -826,6 +908,17 @@ const Explore = ({ socket, user }) => {
           </div>
         </div>
       </div>
+
+      {/* External Profile Modal */}
+      <ProfileModal 
+        isOpen={isProfileModalOpen} 
+        onClose={() => {
+          setIsProfileModalOpen(false);
+          setTimeout(() => setSelectedProfile(null), 300);
+        }} 
+        viewUser={selectedProfile}
+        currentUserId={user?.id}
+      />
     </div>
   );
 };
