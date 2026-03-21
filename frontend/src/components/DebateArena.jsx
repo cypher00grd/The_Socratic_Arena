@@ -74,6 +74,7 @@ const DebateArena = ({
   const [hasUsedLifeline, setHasUsedLifeline] = useState(false);
   const [objectionLoadingId, setObjectionLoadingId] = useState(null);
   const [interventions, setInterventions] = useState({});
+  const ENABLE_AI_OBJECTION = false; // Toggle to true to reveal the button
 
   const handleSummonAIJudge = (messageId) => {
     if (hasUsedLifeline || playerRole === 'Spectator') return;
@@ -609,7 +610,7 @@ const DebateArena = ({
                         )}
 
                         {/* Objection Button */}
-                        {playerRole !== 'Spectator' && message?.speaker !== playerRole && !hasUsedLifeline && !interventions[message?.id] && (
+                        {ENABLE_AI_OBJECTION && playerRole !== 'Spectator' && message?.speaker !== playerRole && !hasUsedLifeline && !interventions[message?.id] && (
                             <button
                                 onClick={() => handleSummonAIJudge(message?.id)}
                                 disabled={objectionLoadingId !== null}

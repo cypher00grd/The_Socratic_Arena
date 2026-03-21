@@ -9,6 +9,7 @@ const MatchReview = () => {
   const { matchId } = useParams();
   const navigate = useNavigate();
   const [match, setMatch] = useState(null);
+  const ENABLE_AI_HIGHLIGHTS = false; // Toggle to true to reveal highlights section
   const [loading, setLoading] = useState(true);
   const [hasVoted, setHasVoted] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
@@ -583,7 +584,10 @@ const MatchReview = () => {
       {/* AI Highlights (Viral Loop) */}
       <div className="p-6 pt-0 space-y-4">
         <div className="max-w-4xl mx-auto">
-          {match.status === 'pending_votes' ? (
+          {/* AI Highlights Section - Managed by Feature Flag */}
+          {ENABLE_AI_HIGHLIGHTS && (
+            <>
+              {match.status === 'pending_votes' ? (
             <div className="mb-8">
               <h3 className="text-xl font-bold text-slate-100 mb-4 flex items-center gap-2">
                 <Sparkles className="h-6 w-6 text-yellow-400" /> AI Highlights
@@ -654,6 +658,8 @@ const MatchReview = () => {
               )}
             </div>
           ) : null}
+            </>
+          )}
         </div>
       </div>
 

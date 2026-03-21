@@ -17,6 +17,9 @@ const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 import { config } from 'dotenv';
 config();
 
+// FEATURE FLAG: Logic control for high-cost Gemini AI features
+const ENABLE_ADVANCED_AI = false; // Toggle to true to re-enable Highlights & Judge Intervention
+
 // Import Google Generative AI for debate evaluation
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
@@ -74,30 +77,34 @@ async function evaluateDebate(transcript, matchId) {
     const debateText = transcript.map(m => `${m.speaker}: ${m.text}`).join('\n');
 
     // 2. Call Gemini
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash", generationConfig: { responseMimeType: "application/json" } });
-    const prompt = `You are a strict master debate judge. Analyze this transcript. You MUST respond with ONLY a valid JSON object. Format exactly like this:
-{
-  "critic": { "logic": <1-10>, "facts": <1-10>, "relevance": <1-10>, "feedback": "<short summary>" },
-  "defender": { "logic": <1-10>, "facts": <1-10>, "relevance": <1-10>, "feedback": "<short summary>" },
-  "overall_summary": "<1 liner description of the whole debate>",
-  "highlights": [
-    { "quote": "<exact quote from transcript>", "author_role": "critic", "context": "<brief reason why this was impactful>" },
-    { "quote": "<another quote>", "author_role": "defender", "context": "<brief reason>" },
-    { "quote": "<third quote>", "author_role": "critic or defender", "context": "<brief reason>" }
-  ]
-}
-
-Debate transcript:
-${debateText}`;
-
-    const result = await model.generateContent(prompt);
-    const rawText = result.response.text();
-
-    // STRIP MARKDOWN BEFORE PARSING:
-    const cleanedText = rawText.replace(/json/g, '').replace(/```/g, '').trim();
+    let aiResponse = { highlights: [], overall_summary: "Debate concluded." };
+    
+    if (ENABLE_ADVANCED_AI) {
+      const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash", generationConfig: { responseMimeType: "application/json" } });
+      const prompt = `You are a strict master debate judge. Analyze this transcript. You MUST respond with ONLY a valid JSON object. Format exactly like this:
+  {
+    "critic": { "logic": <1-10>, "facts": <1-10>, "relevance": <1-10>, "feedback": "<short summary>" },
+    "defender": { "logic": <1-10>, "facts": <1-10>, "relevance": <1-10>, "feedback": "<short summary>" },
+    "overall_summary": "<1 liner description of the whole debate>",
+    "highlights": [
+      { "quote": "<exact quote from transcript>", "author_role": "critic", "context": "<brief reason why this was impactful>" },
+      { "quote": "<another quote>", "author_role": "defender", "context": "<brief reason>" },
+      { "quote": "<third quote>", "author_role": "critic or defender", "context": "<brief reason>" }
+    ]
+  }
+  
+  Debate transcript:
+  ${debateText}`;
+  
+      const result = await model.generateContent(prompt);
+      const rawText = result.response.text();
+  
+      // STRIP MARKDOWN BEFORE PARSING:
+      const cleanedText = rawText.replace(/json/g, '').replace(/```/g, '').trim();
+      aiResponse = JSON.parse(cleanedText);
+    }
 
     try {
-      const aiResponse = JSON.parse(cleanedText);
       const { highlights, ...scoresOnly } = aiResponse;
 
       // 3. Update Supabase
@@ -848,6 +855,16 @@ io.on('connection', (socket) => {
    * Summon AI Judge (Objection Lifeline)
    */
   socket.on('summon_ai_judge', async ({ roomId, targetMessageId }) => {
+    // Feature Flag Check
+    if (!ENABLE_ADVANCED_AI) {
+      socket.emit('ai_intervention_result', { 
+        targetMessageId,
+        flagged: false, 
+        error: "The AI Judge is currently disabled to conserve API limits." 
+      });
+      return;
+    }
+
     const room = activeRooms[roomId];
     if (!room || room.status !== 'active') return;
 
