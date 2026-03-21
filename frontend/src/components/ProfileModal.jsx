@@ -102,11 +102,11 @@ const ProfileModal = ({ isOpen, onClose, viewUser, currentUserId, currentUser })
 
 
     return (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 sm:p-6">
+        <div className="fixed inset-0 z-50 flex items-start justify-end bg-black/60 backdrop-blur-sm p-4 sm:p-6 pt-20 sm:pt-24 pr-4 sm:pr-8">
             {/* 2. Modal Card Container */}
             <div
                 ref={modalRef}
-                className="relative w-full max-w-md bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl flex flex-col max-h-[85vh] mt-12"
+                className="relative w-full max-w-sm bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl flex flex-col max-h-[calc(100vh-7rem)]"
             >
                 {/* Header Banner */}
                 <div className="h-24 bg-gradient-to-br from-indigo-900 to-cyan-900 flex-shrink-0 relative rounded-t-2xl">
@@ -169,48 +169,43 @@ const ProfileModal = ({ isOpen, onClose, viewUser, currentUserId, currentUser })
                             <p className="text-sm font-medium text-slate-300">Live Server Connected</p>
                         </div>
                     </div>
+                </div>
 
-                    {/* Action Buttons */}
-                    <div className="flex flex-col gap-3 w-full mt-2">
-                        {/* Primary Action */}
+                {/* Fixed Action Footer */}
+                <div className="shrink-0 p-6 pt-4 bg-slate-900 border-t border-slate-800 rounded-b-2xl flex flex-col gap-3 w-full z-10">
+                    <button
+                        onClick={() => alert("Direct Challenges are unlocking in Phase 4!")}
+                        className="w-full py-3 rounded-xl flex items-center justify-center gap-2 font-bold text-slate-900 bg-cyan-400 hover:bg-cyan-300 transition-colors shadow-[0_0_15px_rgba(34,211,238,0.3)] cursor-pointer"
+                    >
+                        <Swords className="h-5 w-5" /> Challenge to Debate
+                    </button>
+
+                    <div className="flex gap-3 w-full">
                         <button
-                            onClick={() => alert("Direct Challenges are unlocking in Phase 4!")}
-                            className="w-full py-3 rounded-xl flex items-center justify-center gap-2 font-bold text-slate-900 bg-cyan-400 hover:bg-cyan-300 transition-colors shadow-[0_0_15px_rgba(34,211,238,0.3)] cursor-pointer"
+                            onClick={onClose}
+                            className="flex-1 py-3 rounded-xl flex items-center justify-center font-bold text-slate-300 bg-slate-800 hover:bg-slate-700 transition-colors cursor-pointer"
                         >
-                            <Swords className="h-5 w-5" /> Challenge to Debate
+                            Return
                         </button>
 
-                        {/* Secondary Actions */}
-                        <div className="flex gap-3 w-full">
+                        {!isOwnProfile && (
                             <button
-                                onClick={onClose}
-                                className="flex-1 py-3 rounded-xl flex items-center justify-center font-bold text-slate-300 bg-slate-800 hover:bg-slate-700 transition-colors cursor-pointer"
+                                onClick={handleFollowToggle}
+                                disabled={isToggling}
+                                className={`flex-1 py-3 rounded-xl flex items-center justify-center font-bold transition-colors cursor-pointer border ${isFollowing ? 'text-cyan-400 bg-slate-800 hover:bg-slate-700 border-cyan-500/30' : 'text-slate-900 bg-cyan-400 hover:bg-cyan-300 border-cyan-400'}`}
                             >
-                                Return
+                                {isToggling ? '...' : isFollowing ? 'Following' : 'Follow'}
                             </button>
+                        )}
 
-                            {!isOwnProfile && (
-                                <button
-                                    onClick={handleFollowToggle}
-                                    disabled={isToggling}
-                                    className={`flex-1 py-3 rounded-xl flex items-center justify-center font-bold transition-colors cursor-pointer border ${isFollowing
-                                            ? 'text-cyan-400 bg-slate-800 hover:bg-slate-700 border-cyan-500/30'
-                                            : 'text-slate-900 bg-cyan-400 hover:bg-cyan-300 border-cyan-400'
-                                        }`}
-                                >
-                                    {isToggling ? '...' : isFollowing ? 'Following' : 'Follow'}
-                                </button>
-                            )}
-
-                            {isOwnProfile && (
-                                <button
-                                    onClick={handleSignOut}
-                                    className="flex-1 py-3 rounded-xl flex items-center justify-center gap-2 font-bold text-rose-400 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 transition-all cursor-pointer"
-                                >
-                                    <LogOut className="h-5 w-5" /> Sign Out
-                                </button>
-                            )}
-                        </div>
+                        {isOwnProfile && (
+                            <button
+                                onClick={handleSignOut}
+                                className="flex-1 py-3 rounded-xl flex items-center justify-center gap-2 font-bold text-rose-400 bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/20 transition-all cursor-pointer"
+                            >
+                                <LogOut className="h-5 w-5" /> Sign Out
+                            </button>
+                        )}
                     </div>
                 </div>
             </div>
