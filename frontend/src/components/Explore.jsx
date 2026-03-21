@@ -1,7 +1,7 @@
 import { Compass, Hash, Trophy, Flame, Users, Vote, Activity, Search, X, LayoutGrid, Layers, ChevronDown, ChevronUp, Bookmark, BookmarkCheck } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
-import { getTopicDomain } from '../lib/domainUtils';
+import { getTopicDomain, broadTopicsList } from '../lib/domainUtils';
 import { RankBadge } from '../lib/rankUtils';
 import ProfileModal from './ProfileModal';
 import React, { useEffect, useState } from 'react';
@@ -718,8 +718,13 @@ const Explore = ({ socket, user }) => {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {topics
               .filter(topic => {
-                const title = topic.title || '';
-                return title.toLowerCase().includes(searchQuery.toLowerCase());
+                const title = (topic.title || '').toLowerCase();
+                const isMatch = title.includes(searchQuery.toLowerCase());
+                const isBroad = broadTopicsList.includes(title);
+                const hasSearch = searchQuery.trim().length > 0;
+                const isPlayed = (topicTotals[topic.title] || 0) > 0;
+                
+                return isMatch && !isBroad && (hasSearch || isPlayed);
               })
               .sort((a, b) => (topicTotals[b.title] || 0) - (topicTotals[a.title] || 0))
               .slice(0, 5) // Display top 5 topics as per plan

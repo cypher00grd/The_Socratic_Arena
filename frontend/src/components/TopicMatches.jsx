@@ -9,6 +9,7 @@ const TopicMatches = ({ socket }) => {
   const [matches, setMatches] = useState([]);
   const [loading, setLoading] = useState(true);
   const [currentTime, setCurrentTime] = useState(new Date());
+  const [topicDbEntry, setTopicDbEntry] = useState(null);
 
   const formatTimeLeft = (createdAt) => {
     const end = new Date(createdAt).getTime() + (24 * 60 * 60 * 1000);
@@ -27,6 +28,14 @@ const TopicMatches = ({ socket }) => {
     const fetchMatches = async () => {
       setLoading(true);
       try {
+        // Fetch topic DB entry for lobby navigation
+        const { data: topicData } = await supabase
+          .from('topics')
+          .select('*')
+          .eq('title', decodedTitle)
+          .single();
+        if (topicData) setTopicDbEntry(topicData);
+
         const { data, error } = await supabase
           .from('matches')
           .select('*')
@@ -72,7 +81,6 @@ const TopicMatches = ({ socket }) => {
 
     if (decodedTitle) fetchMatches();
 
-    // Optional: Real-time listener for match status changes in this specific topic
     const channel = supabase
       .channel(`topic_matches_${decodedTitle}`)
       .on(
@@ -154,15 +162,23 @@ const TopicMatches = ({ socket }) => {
     return 'Analyzing debate for summary...';
   };
 
+  const handleStartNewDebate = () => {
+    if (topicDbEntry) {
+      navigate(`/lobby/${topicDbEntry.id}`, { state: { topic: topicDbEntry } });
+    } else {
+      navigate('/explore');
+    }
+  };
+
   return (
     <div className="flex flex-col min-h-screen bg-[#0b0f19] text-slate-200 p-8">
       <div className="max-w-6xl mx-auto w-full">
         <button 
-          onClick={() => navigate('/explore')}
+          onClick={() => navigate(-1)}
           className="flex items-center gap-2 text-slate-400 hover:text-cyan-400 transition-colors mb-8 group"
         >
           <ArrowLeft className="h-5 w-5 group-hover:-translate-x-1 transition-transform" />
-          Back to Explore
+          Back
         </button>
 
         <header className="mb-12 border-b border-slate-800 pb-8">
@@ -284,7 +300,7 @@ const TopicMatches = ({ socket }) => {
               <h3 className="text-2xl font-bold text-slate-400">All quiet in the {decodedTitle} arena.</h3>
               <p className="text-slate-500 mt-2">No active debates. Why not start one yourself?</p>
               <button 
-                onClick={() => navigate('/explore')}
+                onClick={handleStartNewDebate}
                 className="mt-6 text-cyan-400 hover:text-cyan-300 font-bold underline"
               >
                 Start a New Debate

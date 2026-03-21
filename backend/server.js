@@ -20,6 +20,8 @@ config();
 // FEATURE FLAG: Logic control for high-cost Gemini AI features
 const ENABLE_ADVANCED_AI = false; // Toggle to true to re-enable Highlights & Judge Intervention
 
+import './auto_seed.js';
+
 // Import Google Generative AI for debate evaluation
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
@@ -998,6 +1000,220 @@ Respond STRICTLY with a valid JSON object and nothing else: {"isDuplicate": true
     } catch (err) {
       console.error('[AI Bouncer] Error:', err);
       socket.emit('topic_result', { success: false, message: 'Failed to verify topic. Please try again.' });
+    }
+  });
+
+  // =========================================================================
+  // PRIVATE ARENA (Invite-based debates via Arena Code)
+  // =========================================================================
+
+  /**
+   * Generate an 8-char arena code from creator's user ID + random suffix
+   */
+  function generateArenaCode(userId) {
+    const prefix = (userId || '').replace(/-/g, '').substring(0, 4).toUpperCase();
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let suffix = '';
+    for (let i = 0; i < 4; i++) suffix += chars[Math.floor(Math.random() * chars.length)];
+    return `${prefix}-${suffix}`;
+  }
+
+  /**
+   * create_private_arena — Auto-called when a user enters the lobby.
+   * Creates a row in private_arenas and returns the arena code.
+   */
+  socket.on('create_private_arena', async ({ userId, topicId, topicTitle }) => {
+    try {
+      let arenaCode;
+      let attempts = 0;
+      while (attempts < 5) {
+        arenaCode = generateArenaCode(userId);
+        const { data: existing } = await supabase
+          .from('private_arenas')
+          .select('id')
+          .eq('arena_code', arenaCode)
+          .eq('status', 'waiting')
+          .single();
+        if (!existing) break;
+        attempts++;
+      }
+
+      const { data, error } = await supabase.from('private_arenas').insert({
+        arena_code: arenaCode,
+        topic_id: topicId,
+        topic_title: topicTitle,
+        creator_id: userId,
+        status: 'waiting'
+      }).select().single();
+
+      if (error) throw error;
+
+      socket.join(`private_${data.id}`);
+      socket.privateArenaId = data.id;
+
+      console.log(`[Private Arena] Created: ${arenaCode} for topic "${topicTitle}" by ${userId}`);
+      socket.emit('private_arena_created', { arenaCode, arenaId: data.id });
+    } catch (err) {
+      console.error('[Private Arena] Create error:', err);
+      socket.emit('private_arena_error', { message: 'Failed to create private arena.' });
+    }
+  });
+
+  /**
+   * join_private_arena — Joiner pastes arena code to connect.
+   */
+  socket.on('join_private_arena', async ({ userId, arenaCode }) => {
+    try {
+      const code = (arenaCode || '').trim().toUpperCase();
+      const { data: arena, error } = await supabase
+        .from('private_arenas')
+        .select('*')
+        .eq('arena_code', code)
+        .eq('status', 'waiting')
+        .single();
+
+      if (error || !arena) {
+        socket.emit('private_arena_error', { message: 'Invalid or expired Arena Code.' });
+        return;
+      }
+
+      if (arena.creator_id === userId) {
+        socket.emit('private_arena_error', { message: 'You cannot join your own arena!' });
+        return;
+      }
+
+      const { error: updateError } = await supabase.from('private_arenas')
+        .update({ joiner_id: userId, status: 'paired' })
+        .eq('id', arena.id);
+      if (updateError) throw updateError;
+
+      socket.join(`private_${arena.id}`);
+      socket.privateArenaId = arena.id;
+
+      console.log(`[Private Arena] Joined: ${code} — joiner ${userId}`);
+
+      io.to(`private_${arena.id}`).emit('private_arena_joined', {
+        arenaId: arena.id,
+        topicTitle: arena.topic_title,
+        topicId: arena.topic_id,
+        creatorId: arena.creator_id,
+        joinerId: userId
+      });
+    } catch (err) {
+      console.error('[Private Arena] Join error:', err);
+      socket.emit('private_arena_error', { message: 'Failed to join arena.' });
+    }
+  });
+
+  /**
+   * private_arena_set_stance — Player picks stance, broadcasts to both.
+   */
+  socket.on('private_arena_set_stance', async ({ arenaId, stance, role }) => {
+    try {
+      const field = role === 'creator' ? 'creator_stance' : 'joiner_stance';
+      await supabase.from('private_arenas').update({ [field]: stance }).eq('id', arenaId);
+
+      const { data: arena } = await supabase.from('private_arenas')
+        .select('creator_stance, joiner_stance').eq('id', arenaId).single();
+
+      io.to(`private_${arenaId}`).emit('private_arena_stance_update', {
+        creatorStance: arena?.creator_stance,
+        joinerStance: arena?.joiner_stance
+      });
+    } catch (err) {
+      console.error('[Private Arena] Stance error:', err);
+    }
+  });
+
+  /**
+   * start_private_debate — Creates match, assigns roles, starts debate.
+   * Bypasses the normal matchmaking queue entirely.
+   */
+  socket.on('start_private_debate', async ({ arenaId }) => {
+    try {
+      const { data: arena, error } = await supabase.from('private_arenas')
+        .select('*').eq('id', arenaId).single();
+
+      if (error || !arena || arena.status === 'started') {
+        socket.emit('private_arena_error', { message: 'Arena not found or already started.' });
+        return;
+      }
+      if (!arena.joiner_id) {
+        socket.emit('private_arena_error', { message: 'Waiting for opponent to join first.' });
+        return;
+      }
+
+      // Determine roles from stances
+      const cStance = arena.creator_stance || 'Random';
+      const jStance = arena.joiner_stance || 'Random';
+      let creatorRole, joinerRole;
+      if (cStance === 'Critic') { creatorRole = 'Critic'; joinerRole = 'Defender'; }
+      else if (cStance === 'Defender') { creatorRole = 'Defender'; joinerRole = 'Critic'; }
+      else if (jStance === 'Critic') { joinerRole = 'Critic'; creatorRole = 'Defender'; }
+      else if (jStance === 'Defender') { joinerRole = 'Defender'; creatorRole = 'Critic'; }
+      else { if (Math.random() > 0.5) { creatorRole = 'Critic'; joinerRole = 'Defender'; } else { creatorRole = 'Defender'; joinerRole = 'Critic'; } }
+
+      const criticUserId = creatorRole === 'Critic' ? arena.creator_id : arena.joiner_id;
+      const defenderUserId = creatorRole === 'Defender' ? arena.creator_id : arena.joiner_id;
+
+      // Create match
+      const { data: matchData, error: matchError } = await supabase.from('matches').insert({
+        topic: arena.topic_title,
+        topic_title: arena.topic_title,
+        status: 'active',
+        critic_id: criticUserId,
+        defender_id: defenderUserId
+      }).select().single();
+      if (matchError) throw matchError;
+
+      const roomId = matchData.id;
+      await supabase.from('private_arenas').update({ status: 'started', match_id: roomId }).eq('id', arenaId);
+
+      // Get sockets in private room and move them to match room
+      const socketsInRoom = await io.in(`private_${arenaId}`).fetchSockets();
+      const criticSocket = socketsInRoom.find(s => s.privateArenaRole === 'creator' ? creatorRole === 'Critic' : joinerRole === 'Critic');
+      const defenderSocket = socketsInRoom.find(s => s !== criticSocket);
+
+      for (const s of socketsInRoom) {
+        s.join(roomId);
+        s.currentMatchId = roomId;
+      }
+
+      const criticSid = socketsInRoom[0]?.id || 'unknown';
+      const defenderSid = socketsInRoom[1]?.id || socketsInRoom[0]?.id || 'unknown';
+
+      activeRooms[roomId] = {
+        players: { critic: criticSid, defender: defenderSid },
+        critic_id: criticUserId,
+        defender_id: defenderUserId,
+        topic: arena.topic_title,
+        activeSpeaker: 'Critic',
+        criticTime: 300,
+        defenderTime: 300,
+        transcript: [],
+        status: 'active',
+        startTime: Date.now()
+      };
+
+      // Emit match_found — clients identify their role via userId
+      io.to(roomId).emit('match_found', {
+        roomId,
+        topic: arena.topic_title,
+        criticUserId,
+        defenderUserId,
+        roles: {
+          [criticSid]: 'Critic',
+          [defenderSid]: 'Defender'
+        }
+      });
+
+      startRoomTimer(roomId);
+      io.to(roomId).emit('time_sync', { criticTime: 300, defenderTime: 300, activeSpeaker: 'Critic' });
+
+      console.log(`[Private Arena] Debate started! Room: ${roomId}, Topic: "${arena.topic_title}"`);
+    } catch (err) {
+      console.error('[Private Arena] Start error:', err);
+      socket.emit('private_arena_error', { message: 'Failed to start debate.' });
     }
   });
 

@@ -1,9 +1,9 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Shield, Compass, LayoutDashboard, User, ChevronDown, Swords } from 'lucide-react';
+import { Shield, Compass, LayoutDashboard, User, ChevronDown, Swords, Plus, Link2 } from 'lucide-react';
 import { useState } from 'react';
 import ProfileModal from './ProfileModal';
 
-const Navbar = ({ user }) => {
+const Navbar = ({ user, onCreateArena, onJoinArena }) => {
   const location = useLocation();
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const isActive = (path) => location.pathname === path;
@@ -43,7 +43,19 @@ const Navbar = ({ user }) => {
       </div>
 
       {user && (
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-3">
+          <button
+            onClick={onCreateArena}
+            className="flex items-center gap-2 px-3 py-2 rounded-md transition text-sm font-medium text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
+          >
+            <Plus className="h-4 w-4" /> Create Arena
+          </button>
+          <button
+            onClick={onJoinArena}
+            className="flex items-center gap-2 px-3 py-2 rounded-md transition text-sm font-medium text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
+          >
+            <Link2 className="h-4 w-4" /> Join Arena
+          </button>
           <button
             onClick={() => setIsProfileOpen(true)}
             className="flex items-center gap-2.5 bg-slate-800 hover:bg-slate-700/80 transition-all rounded-full pl-3 pr-4 py-1.5 border border-slate-700 shadow-inner group cursor-pointer"
@@ -68,3 +80,4 @@ const Navbar = ({ user }) => {
 };
 
 export default Navbar;
+

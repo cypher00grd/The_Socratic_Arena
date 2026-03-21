@@ -54,7 +54,7 @@ const isRateLimitError = (error) => {
  * ---------------------------------------------------------------------------
  * Builds an in-memory vector knowledge base from chunked text.
  *
- * What embeddings are (beginner explanation):
+ * What embeddings are(explanation):
  * - Embeddings are numeric vectors that represent the semantic meaning of text.
  * - Similar meaning => vectors are closer together in vector space.
  * - This lets us ask, "Which chunks are most relevant to this question?"

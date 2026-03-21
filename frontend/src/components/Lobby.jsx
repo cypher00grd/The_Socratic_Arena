@@ -1,6 +1,6 @@
-import { Users, Clock, Shield, Swords, ArrowRight, Shuffle, Sparkles, AlertCircle, X } from 'lucide-react';
+import { Users, Clock, Shield, Swords, ArrowRight, Shuffle, Sparkles, AlertCircle, X, Copy, CheckCircle2, Link2 } from 'lucide-react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 
 const Lobby = ({ socket, user }) => {
   const { topicId } = useParams();
@@ -9,39 +9,131 @@ const Lobby = ({ socket, user }) => {
   const [isMatchmaking, setIsMatchmaking] = useState(false);
   const [selectedRole, setSelectedRole] = useState('Random');
   
+  // Private Arena state
+  const [arenaCode, setArenaCode] = useState(null);
+  const [arenaId, setArenaId] = useState(null);
+  const [isPaired, setIsPaired] = useState(false);
+  const [opponentId, setOpponentId] = useState(null);
+  const [myRole, setMyRole] = useState(null); // 'creator' or 'joiner'
+  const myRoleRef = useRef(null);
+  const [opponentStance, setOpponentStance] = useState(null);
+  const [copied, setCopied] = useState(false);
+  const [privateError, setPrivateError] = useState(null);
+
+  // Check if we arrived via "Join Arena" with an arenaCode in route state
+  const incomingArenaCode = location.state?.arenaCode;
+  
   // Extract topic from route state (or fallback)
   const topic = location.state?.topic || { id: topicId, title: 'Unknown Topic' };
 
   useEffect(() => {
     if (!socket) return;
 
+    // --- Normal matchmaking listeners ---
     const handleMatchFound = (data) => {
-      const myRole = data.roles ? data.roles[socket.id] : null;
-      navigate(`/arena/${data.roomId}`, { state: { ...data, assignedRole: myRole } });
+      const assignedRole = data.roles ? data.roles[socket.id] : null;
+      navigate(`/arena/${data.roomId}`, { state: { ...data, assignedRole } });
     };
 
     const handleWaiting = () => {
       setIsMatchmaking(true);
     };
 
+    // --- Private Arena listeners ---
+    const handleArenaCreated = ({ arenaCode: code, arenaId: id }) => {
+      setArenaCode(code);
+      setArenaId(id);
+      setMyRole('creator');
+      myRoleRef.current = 'creator';
+    };
+
+    const handleArenaJoined = ({ arenaId: id, creatorId, joinerId, topicTitle }) => {
+      setArenaId(id);
+      setIsPaired(true);
+      if (creatorId === user?.id) {
+        setMyRole('creator');
+        myRoleRef.current = 'creator';
+        setOpponentId(joinerId);
+      } else {
+        setMyRole('joiner');
+        myRoleRef.current = 'joiner';
+        setOpponentId(creatorId);
+      }
+    };
+
+    const handleStanceUpdate = ({ creatorStance, joinerStance }) => {
+      // Use ref to always get the latest myRole (avoids stale closure)
+      if (myRoleRef.current === 'creator') {
+        setOpponentStance(joinerStance);
+      } else {
+        setOpponentStance(creatorStance);
+      }
+    };
+
+    const handlePrivateError = ({ message }) => {
+      setPrivateError(message);
+      setTimeout(() => setPrivateError(null), 4000);
+    };
+
     socket.on('match_found', handleMatchFound);
     socket.on('waiting_for_opponent', handleWaiting);
+    socket.on('private_arena_created', handleArenaCreated);
+    socket.on('private_arena_joined', handleArenaJoined);
+    socket.on('private_arena_stance_update', handleStanceUpdate);
+    socket.on('private_arena_error', handlePrivateError);
+
+    // Auto-create private arena on mount (unless we're joining one)
+    if (!incomingArenaCode) {
+      socket.emit('create_private_arena', {
+        userId: user?.id,
+        topicId: topic.id,
+        topicTitle: topic.title
+      });
+    } else {
+      // We're joining via code — emit join
+      setMyRole('joiner');
+      myRoleRef.current = 'joiner';
+      socket.emit('join_private_arena', {
+        userId: user?.id,
+        arenaCode: incomingArenaCode
+      });
+    }
 
     return () => {
       socket.off('match_found', handleMatchFound);
       socket.off('waiting_for_opponent', handleWaiting);
+      socket.off('private_arena_created', handleArenaCreated);
+      socket.off('private_arena_joined', handleArenaJoined);
+      socket.off('private_arena_stance_update', handleStanceUpdate);
+      socket.off('private_arena_error', handlePrivateError);
     };
   }, [socket, navigate]);
+
+  // Broadcast stance changes when paired
+  useEffect(() => {
+    if (!socket || !isPaired || !arenaId || !myRole) return;
+    socket.emit('private_arena_set_stance', {
+      arenaId,
+      stance: selectedRole,
+      role: myRole
+    });
+  }, [selectedRole, isPaired, arenaId, myRole, socket]);
 
   const handleStartMatchmaking = () => {
     if (!socket) {
       window.alert('Socket not connected');
       return;
     }
+
+    if (isPaired && arenaId) {
+      // Private arena — start directly!
+      socket.emit('start_private_debate', { arenaId });
+      setIsMatchmaking(true);
+      return;
+    }
     
+    // Normal queue matchmaking
     setIsMatchmaking(true);
-    
-    // Emit new payload expected by upgraded backend
     socket.emit('join_queue', { 
       userId: user?.id,
       topicId: topic.id,
@@ -54,6 +146,18 @@ const Lobby = ({ socket, user }) => {
     if (!socket) return;
     socket.emit('leave_queue');
     setIsMatchmaking(false);
+  };
+
+  const handleCopyCode = () => {
+    if (!arenaCode) return;
+    navigator.clipboard.writeText(arenaCode);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const formatSocraticId = (id) => {
+    if (!id) return '...';
+    return id.split('-')[0] + '...';
   };
 
   const roles = [
@@ -95,7 +199,7 @@ const Lobby = ({ socket, user }) => {
         <div className="absolute bottom-0 left-0 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl translate-y-1/2 -translate-x-1/2 pointer-events-none" />
 
         <div className="relative z-10 flex flex-col items-center">
-          <header className="text-center mb-10 w-full">
+          <header className="text-center mb-6 w-full">
             <div className="flex items-center justify-center gap-2 text-cyan-400 font-bold tracking-[0.2em] uppercase text-xs mb-4">
               <Sparkles className="h-4 w-4" />
               Arena Preparation
@@ -109,6 +213,64 @@ const Lobby = ({ socket, user }) => {
               You are about to enter the ring. Choose your combat stance carefully.
             </p>
           </header>
+
+          {/* Arena Code Badge */}
+          {arenaCode && !isPaired && (
+            <div className="w-full max-w-md mb-6">
+              <div className="bg-slate-800/60 border border-slate-700/50 rounded-2xl p-4 flex items-center justify-between gap-4">
+                <div className="flex items-center gap-3 overflow-hidden">
+                  <div className="shrink-0 bg-indigo-500/10 border border-indigo-500/30 rounded-lg p-2">
+                    <Link2 className="h-5 w-5 text-indigo-400" />
+                  </div>
+                  <div className="overflow-hidden">
+                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">Arena Code — Share to invite</p>
+                    <p className="text-lg font-mono font-black text-slate-100 tracking-widest">{arenaCode}</p>
+                  </div>
+                </div>
+                <button 
+                  onClick={handleCopyCode} 
+                  className="shrink-0 bg-slate-700/50 hover:bg-slate-700 border border-slate-600/50 rounded-lg p-2.5 transition-all active:scale-90"
+                  title="Copy Arena Code"
+                >
+                  {copied ? <CheckCircle2 className="h-5 w-5 text-emerald-400" /> : <Copy className="h-5 w-5 text-slate-400" />}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Paired Mode — Opponent Connected Banner */}
+          {isPaired && (
+            <div className="w-full max-w-md mb-6">
+              <div className="bg-emerald-500/10 border border-emerald-500/30 rounded-2xl p-4 space-y-3">
+                <div className="flex items-center gap-3">
+                  <div className="h-3 w-3 rounded-full bg-emerald-500 animate-pulse" />
+                  <span className="text-emerald-300 font-bold text-sm uppercase tracking-wider">Opponent Connected!</span>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-slate-900/60 rounded-xl p-3 border border-slate-700/50">
+                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-1">You</p>
+                    <p className="text-sm font-mono text-cyan-400">{formatSocraticId(user?.id)}</p>
+                  </div>
+                  <div className="bg-slate-900/60 rounded-xl p-3 border border-slate-700/50">
+                    <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider mb-1">Opponent</p>
+                    <p className="text-sm font-mono text-rose-400">{formatSocraticId(opponentId)}</p>
+                  </div>
+                </div>
+                {opponentStance && (
+                  <p className="text-xs text-slate-400 text-center">
+                    Opponent chose: <span className="font-bold text-slate-200">{opponentStance}</span>
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Error feedback */}
+          {privateError && (
+            <div className="w-full max-w-md mb-4 bg-red-500/10 border border-red-500/30 text-red-400 text-sm font-medium px-4 py-3 rounded-xl">
+              {privateError}
+            </div>
+          )}
 
           {!isMatchmaking ? (
             <div className="w-full space-y-8">
@@ -150,7 +312,7 @@ const Lobby = ({ socket, user }) => {
                     selectedRole === 'Defender' ? 'from-cyan-500 to-blue-600' : 
                     'from-slate-400 to-slate-500'
                   }`} />
-                  <span>Enter Arena</span>
+                  <span>{isPaired ? 'Start Debate' : 'Enter Arena'}</span>
                   <Swords className="h-6 w-6 group-hover:rotate-12 transition-transform" />
                 </button>
                 
@@ -179,27 +341,31 @@ const Lobby = ({ socket, user }) => {
                 <div className="flex items-center justify-center gap-3">
                   <div className={`h-3 w-3 rounded-full animate-ping ${selectedRole === 'Critic' ? 'bg-red-500' : selectedRole === 'Defender' ? 'bg-cyan-500' : 'bg-slate-400'}`} />
                   <span className="text-2xl font-black text-slate-100 uppercase tracking-tighter">
-                    Summoning Challenger...
+                    {isPaired ? 'Starting Debate...' : 'Summoning Challenger...'}
                   </span>
                 </div>
                 <div className="flex flex-col items-center gap-2">
                   <p className="text-slate-400 flex items-center gap-2 italic">
                     Preferred Stance: <span className="text-slate-200 non-italic font-bold tracking-widest">{selectedRole}</span>
                   </p>
-                  <div className="bg-slate-950/50 border border-slate-800 px-4 py-2 rounded-lg flex items-center gap-2 text-xs text-slate-500">
-                    <AlertCircle className="h-3 w-3" />
-                    Estimated wait time: &lt; 15 seconds
-                  </div>
+                  {!isPaired && (
+                    <div className="bg-slate-950/50 border border-slate-800 px-4 py-2 rounded-lg flex items-center gap-2 text-xs text-slate-500">
+                      <AlertCircle className="h-3 w-3" />
+                      Estimated wait time: &lt; 15 seconds
+                    </div>
+                  )}
                 </div>
               </div>
               
-              <button 
-                onClick={handleLeaveQueue}
-                className="group flex items-center gap-2 text-slate-500 hover:text-rose-500 px-6 py-2 rounded-xl transition-all hover:bg-rose-500/5 font-black uppercase tracking-widest text-xs"
-              >
-                <X className="h-4 w-4 group-hover:scale-125 transition-transform" />
-                Abort Mission
-              </button>
+              {!isPaired && (
+                <button 
+                  onClick={handleLeaveQueue}
+                  className="group flex items-center gap-2 text-slate-500 hover:text-rose-500 px-6 py-2 rounded-xl transition-all hover:bg-rose-500/5 font-black uppercase tracking-widest text-xs"
+                >
+                  <X className="h-4 w-4 group-hover:scale-125 transition-transform" />
+                  Abort Mission
+                </button>
+              )}
             </div>
           )}
         </div>
