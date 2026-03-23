@@ -14,9 +14,10 @@ import DebateArena from './components/DebateArena';
 import MatchReview from './components/MatchReview';
 import TopicMatches from './components/TopicMatches';
 
-// Singleton Socket
+// Singleton Socket (Auto-connect disabled until token is ready)
 const socket = io('http://localhost:5000', {
   transports: ['websocket', 'polling'],
+  autoConnect: false,
 });
 
 const App = () => {
@@ -38,10 +39,20 @@ const App = () => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
       setIsAuthLoading(false);
+      if (session) {
+        socket.auth = { token: session.access_token };
+        socket.connect();
+      }
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
+      if (session) {
+        socket.auth = { token: session.access_token };
+        socket.disconnect().connect(); // refresh socket auth
+      } else {
+        socket.disconnect();
+      }
     });
 
     return () => {
