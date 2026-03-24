@@ -1,19 +1,82 @@
 import { supabase } from './lib/supabaseClient.js';
 
 const topicsToAdd = [
-  "Technology", "Geopolitics", "Food", "Travel", "Science",
-  "Politics", "Society", "Philosophy", "Sports", "Economics",
-  "Health", "Entertainment", "Artificial Intelligence", "Climate Change",
-  "Space Exploration", "Cryptocurrency", "Education System",
-  "Remote Work", "Mental Health", "Social Media", "Renewable Energy",
-  "Universal Basic Income", "Data Privacy", "Genetic Engineering",
-  "Cybersecurity", "Electric Vehicles", "Global Warming", "Human Rights",
-  "Automation", "Future of Work", "Healthcare Systems", "Veganism",
-  "Censorship", "Cancel Culture", "Space Colonization", "E-sports",
-  "Globalization", "Nuclear Energy", "Capitalism vs Socialism", "Free Speech",
-  "Gun Control", "Immigration", "Artificial General Intelligence", "Web3",
-  "Virtual Reality", "Quantum Computing", "Democracy", "Freedom of Press",
-  "Income Inequality", "Vaccine Mandates"
+  // Science
+  "Is the Multiverse Theory scientifically falsifiable?",
+  "Should we de-extinct the Woolly Mammoth?",
+  "Is the speed of light a universal constant?",
+  "Should human germline editing be globally banned?",
+  "Space exploration vs Oceans: which is more critical?",
+  
+  // Technology
+  "Will AGI inevitably lead to human obsolescence?",
+  "Should neural implants be regulated like medical drugs?",
+  "Is internet access a basic human right?",
+  "Will blockchain actually decentralize power?",
+  "Should AI be granted legal personhood?",
+  
+  // Geopolitics
+  "Is the era of US hegemony officially over?",
+  "Should India be a permanent member of the UNSC?",
+  "Is space the next frontier for military conflict?",
+  "Will the Arctic be the next flashpoint for war?",
+  "Should the UN be reformed to yield more power?",
+  
+  // Politics
+  "Is direct democracy feasible in the digital age?",
+  "Should political leaders have maximum age limits?",
+  "Is the concept of the nation-state dying?",
+  "Should voting be mandatory in all democracies?",
+  "Is technocracy better than traditional politics?",
+  
+  // Society
+  "Has social media damaged human attention spans?",
+  "Should UBI be implemented to counter automation?",
+  "Is privacy a luxury or a fundamental right?",
+  "Should we shift to a 4-day work week?",
+  "Is cancel culture a form of digital justice?",
+  
+  // Food
+  "Is lab-grown meat the only sustainable future?",
+  "Should sugar be taxed like tobacco?",
+  "Is a strictly vegan diet healthier for humans?",
+  "Should we ban pesticides in all agriculture?",
+  "Is organic food worth the premium price?",
+  
+  // Philosophy
+  "Do we live in a computer simulation?",
+  "Is morality objective or entirely subjective?",
+  "What is the meaning of life in a post-AI world?",
+  "Is free will an illusion created by biology?",
+  "Should we aim for biological immortality?",
+  
+  // Sports
+  "Should e-sports be included in the Olympics?",
+  "Does VAR improve or ruin the spirit of football?",
+  "Should doping be allowed in separate leagues?",
+  "Are college athletes being exploited?",
+  "Should men and women compete in the same league?",
+  
+  // Economics
+  "Is capitalism still the best economic system?",
+  "Will crypto replace central bank currencies?",
+  "Should the billionaires' wealth be capped?",
+  "Is globalization good for developing nations?",
+  "Will AI-driven deflation collapse the economy?",
+  
+  // Health
+  "Is technology the cause of the mental health crisis?",
+  "Should gene-editing remain illegal for humans?",
+  "Will AI surgeons eventually replace humans?",
+  "Should healthcare be 100% government funded?",
+  "Is longevity research a waste of resources?",
+  
+  // Entertainment
+  "Has streaming killed the movie theater experience?",
+  "Is AI-generated music real art?",
+  "Should celebrity private lives be public domain?",
+  "Is movie stardom over in the age of creators?",
+  "Should fan-fiction be protected as original work?"
 ];
 
 setTimeout(async () => {

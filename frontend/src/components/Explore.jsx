@@ -1,4 +1,4 @@
-import { Compass, Hash, Trophy, Flame, Users, Vote, Activity, Search, X, LayoutGrid, Layers, ChevronDown, ChevronUp, Bookmark, BookmarkCheck } from 'lucide-react';
+import { Compass, Hash, Trophy, Flame, Swords, Users, Vote, Activity, Search, X, LayoutGrid, Layers, ChevronDown, ChevronUp, Bookmark, BookmarkCheck, Target } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
 import { getTopicDomain, broadTopicsList } from '../lib/domainUtils';
@@ -32,6 +32,7 @@ const Explore = ({ socket, user }) => {
   const [followedIds, setFollowedIds] = useState(() => {
     try { return JSON.parse(localStorage.getItem('explore_followed_ids')) || []; } catch { return []; }
   });
+  const [togglingIds, setTogglingIds] = useState(new Set());
   const [searchId, setSearchId] = useState('');
   const [searchError, setSearchError] = useState('');
 
@@ -126,12 +127,20 @@ const Explore = ({ socket, user }) => {
         console.error("[Explore] Live Matches Fetch Error:", error.message, error.details);
       }
       if (!error && data) {
-        setLiveMatches(data);
-        localStorage.setItem('explore_live', JSON.stringify(data));
+        // Filter out "Ghost Matches" (any active match older than 15 mins is definitely over)
+        const now = new Date();
+        const filteredLive = data.filter(match => {
+          const createdAt = new Date(match.created_at);
+          const ageInMinutes = (now - createdAt) / (1000 * 60);
+          return ageInMinutes < 15;
+        });
 
-        // Calculate player density per topic title (2 players per active match)
+        setLiveMatches(filteredLive);
+        localStorage.setItem('explore_live', JSON.stringify(filteredLive));
+
+        // Calculate player density per topic title
         const counts = {};
-        data.forEach(match => {
+        filteredLive.forEach(match => {
           const topic = match.topic_title;
           if (topic) counts[topic] = (counts[topic] || 0) + 2;
         });
@@ -183,10 +192,36 @@ const Explore = ({ socket, user }) => {
 
     const interval = setInterval(fetchLive, 5000);
     const timerInterval = setInterval(() => setCurrentTime(new Date()), 1000);
+
+    // Real-time listener: Instantly remove ended matches from Live Arenas
+    const handleMatchEnded = ({ matchId }) => {
+      console.log(`[Explore] match_ended received for ${matchId}. Removing from Live Arenas.`);
+      setLiveMatches(prev => {
+        const updated = prev.filter(m => m.id !== matchId);
+        localStorage.setItem('explore_live', JSON.stringify(updated));
+        return updated;
+      });
+      // Also recalculate active user counts
+      setActiveUserCounts(prev => {
+        const newCounts = { ...prev };
+        // We don't know the topic here, so just re-derive from the updated list on next fetch
+        return newCounts;
+      });
+      // Re-fetch deliberating since the match may now be in pending_votes or abandoned
+      fetchDeliberating();
+    };
+
+    if (socket) {
+      socket.on('match_ended', handleMatchEnded);
+    }
+
     return () => {
       clearInterval(interval);
       clearInterval(timerInterval);
-      if (socket) socket.off('new_topic_added', fetchTopics); // Keep this if it's still relevant for new topics
+      if (socket) {
+        socket.off('new_topic_added', fetchTopics);
+        socket.off('match_ended', handleMatchEnded);
+      }
     };
   }, []); // Dependency array changed from [socket, user] to []
 
@@ -257,36 +292,51 @@ const Explore = ({ socket, user }) => {
     };
   }, [socket]); // Dependencies adjusted
 
-  // Follow / Unfollow toggle with optimistic UI
+  // Follow / Unfollow toggle with optimistic UI and lock
   const toggleFollow = async (topicId) => {
-    if (!user) return;
-    const isFollowed = followedIds.includes(topicId);
+    if (!user || togglingIds.has(topicId)) return;
+    
+    setTogglingIds(prev => new Set(prev).add(topicId));
 
-    // Optimistic update
-    const newIds = isFollowed
-      ? followedIds.filter(id => id !== topicId)
-      : [...followedIds, topicId];
-    setFollowedIds(newIds);
-    localStorage.setItem('explore_followed_ids', JSON.stringify(newIds));
+    try {
+      const isCurrentlyFollowed = followedIds.includes(topicId);
 
-    if (isFollowed) {
-      const { error } = await supabase
-        .from('topic_follows')
-        .delete()
-        .eq('user_id', user.id)
-        .eq('topic_id', topicId);
-      if (error) {
-        console.error('[Explore] Unfollow error:', error.message);
-        setFollowedIds(followedIds); // revert
+      // Optimistic update
+      setFollowedIds(prev => {
+        const next = isCurrentlyFollowed
+          ? prev.filter(id => id !== topicId)
+          : [...prev, topicId];
+        localStorage.setItem('explore_followed_ids', JSON.stringify(next));
+        return next;
+      });
+
+      if (isCurrentlyFollowed) {
+        const { error } = await supabase
+          .from('topic_follows')
+          .delete()
+          .eq('user_id', user.id)
+          .eq('topic_id', topicId);
+        if (error) {
+          console.error('[Explore] Unfollow error:', error.message);
+          // Revert on error
+          setFollowedIds(prev => [...prev, topicId]);
+        }
+      } else {
+        const { error } = await supabase
+          .from('topic_follows')
+          .insert({ user_id: user.id, topic_id: topicId });
+        if (error) {
+          console.error('[Explore] Follow error:', error.message);
+          // Revert on error
+          setFollowedIds(prev => prev.filter(id => id !== topicId));
+        }
       }
-    } else {
-      const { error } = await supabase
-        .from('topic_follows')
-        .insert({ user_id: user.id, topic_id: topicId });
-      if (error) {
-        console.error('[Explore] Follow error:', error.message);
-        setFollowedIds(followedIds); // revert
-      }
+    } finally {
+      setTogglingIds(prev => {
+        const next = new Set(prev);
+        next.delete(topicId);
+        return next;
+      });
     }
   };
 
@@ -520,7 +570,37 @@ const Explore = ({ socket, user }) => {
                           {matches.length} ACTIVE DEBATES
                         </span>
                         <div className="flex items-center gap-1 text-slate-400 group-hover:text-red-300 transition-colors">
-                          <span className="text-xs font-bold uppercase">View Topics</span>
+                          <span className="text-xs font-bold uppercase mr-2">View Topics</span>
+                          
+                          {/* Side-by-side icons in Live Stack cards */}
+                          {(() => {
+                             const domain = getTopicDomain(title).domain;
+                             const categoryTopic = topics.find(t => t.title.toLowerCase() === domain.toLowerCase());
+                             const specificTopic = topics.find(t => t.title.toLowerCase() === title.toLowerCase());
+                             const isCatFollowed = categoryTopic ? followedIds.includes(categoryTopic.id) : false;
+                             const isTopicFollowed = specificTopic ? followedIds.includes(specificTopic.id) : false;
+
+                             return <div className="flex items-center gap-2 mr-2">
+                                  <button
+                                    disabled={togglingIds.has(specificTopic?.id)}
+                                    onClick={(e) => { e.stopPropagation(); if (specificTopic) toggleFollow(specificTopic.id); }}
+                                    className={`p-1 rounded-md border transition-all ${isTopicFollowed ? 'bg-indigo-500/20 border-indigo-500/40 text-indigo-400' : 'bg-slate-800 border-slate-700 text-slate-500'} ${togglingIds.has(specificTopic?.id) ? 'opacity-50 keep-cursor' : ''}`}
+                                    title="Save Topic"
+                                  >
+                                    <Target className={`h-3 w-3 ${togglingIds.has(specificTopic?.id) ? 'animate-pulse' : ''}`} />
+                                  </button>
+                                  <button
+                                    disabled={togglingIds.has(categoryTopic?.id)}
+                                    onClick={(e) => { e.stopPropagation(); if (categoryTopic) toggleFollow(categoryTopic.id); }}
+                                    className={`p-1 rounded-md border transition-all ${isCatFollowed ? 'bg-amber-500/20 border-amber-500/40 text-amber-400' : 'bg-slate-800 border-slate-700 text-slate-500'} ${togglingIds.has(categoryTopic?.id) ? 'opacity-50 keep-cursor' : ''}`}
+                                    title={`Follow ${domain}`}
+                                  >
+                                    {isCatFollowed ? <BookmarkCheck className={`h-3 w-3 ${togglingIds.has(categoryTopic?.id) ? 'animate-pulse' : ''}`} /> : <Bookmark className={`h-3 w-3 ${togglingIds.has(categoryTopic?.id) ? 'animate-pulse' : ''}`} />}
+                                  </button>
+                                </div>
+                             ;
+                          })()}
+
                           <ChevronDown className="h-4 w-4" />
                         </div>
                       </div>
@@ -529,23 +609,25 @@ const Explore = ({ socket, user }) => {
                 }
 
                 const match = matches[0];
+                const isPlayer = user && (match.critic_id === user.id || match.defender_id === user.id);
+                
                 return (
                   <div 
                     key={match.id} 
-                    onClick={() => navigate(`/arena/${match.id}`, { state: { roomId: match.id, topic: match.topic_title, isSpectator: true } })}
-                    className="group cursor-pointer relative bg-red-950/10 border border-red-500/20 rounded-xl p-6 flex flex-col h-full hover:border-red-500/40 transition-all duration-300 hover:shadow-[0_0_20px_rgba(239,68,68,0.1)] active:scale-[0.98]"
+                    onClick={() => navigate(`/arena/${match.id}`, { state: { roomId: match.id, topic: match.topic_title, isSpectator: !isPlayer } })}
+                    className={`group cursor-pointer relative bg-red-950/10 border border-red-500/20 rounded-xl p-6 flex flex-col h-full hover:border-red-500/40 transition-all duration-300 hover:shadow-[0_0_20px_rgba(239,68,68,0.1)] active:scale-[0.98] ${isPlayer ? 'ring-2 ring-amber-500/50' : ''}`}
                   >
                     <div className="flex items-center gap-3 mb-4">
-                      <Activity className="h-6 w-6 text-red-400 animate-pulse" />
+                      {isPlayer ? <Swords className="h-6 w-6 text-amber-500 animate-pulse" /> : <Activity className="h-6 w-6 text-red-400 animate-pulse" />}
                       <h3 className="text-xl font-bold text-slate-100 line-clamp-2 flex-1">{match.topic_title || 'Custom Debate'}</h3>
                     </div>
                     
                     <div className="mt-auto flex items-center justify-between">
-                      <span className="text-red-400 font-bold text-sm tracking-tighter">
-                        1 ACTIVE DEBATE
+                      <span className={`${isPlayer ? 'text-amber-500' : 'text-red-400'} font-bold text-sm tracking-tighter`}>
+                        {isPlayer ? 'YOUR MATCH' : '1 ACTIVE DEBATE'}
                       </span>
-                      <div className="flex items-center gap-1 text-slate-400 group-hover:text-red-300 transition-colors">
-                        <span className="text-xs font-bold uppercase">Spectate</span>
+                      <div className={`flex items-center gap-1 transition-colors ${isPlayer ? 'text-amber-400 group-hover:text-amber-300' : 'text-slate-400 group-hover:text-red-300'}`}>
+                        <span className="text-xs font-bold uppercase">{isPlayer ? 'Rejoin Match' : 'Spectate'}</span>
                         <ChevronDown className="h-4 w-4 -rotate-90" />
                       </div>
                     </div>
@@ -650,7 +732,38 @@ const Explore = ({ socket, user }) => {
                         {matches.length} {matches.length === 1 ? 'PENDING DECISION' : 'PENDING DECISIONS'}
                       </span>
                       <div className="flex items-center gap-1 text-slate-400 group-hover:text-purple-300 transition-colors">
-                        <span className="text-xs font-bold uppercase">View Stack</span>
+                        <span className="text-xs font-bold uppercase mr-2">View Stack</span>
+                        
+                        {/* Side-by-side icons in Delibration cards */}
+                        {(() => {
+                           const domain = getTopicDomain(title).domain;
+                           const categoryTopic = topics.find(t => t.title.toLowerCase() === domain.toLowerCase());
+                           const specificTopic = topics.find(t => t.title.toLowerCase() === title.toLowerCase());
+                           const isCatFollowed = categoryTopic ? followedIds.includes(categoryTopic.id) : false;
+                           const isTopicFollowed = specificTopic ? followedIds.includes(specificTopic.id) : false;
+
+                           return (
+                            <div className="flex items-center gap-2 mr-2">
+                               <button
+                                 disabled={togglingIds.has(specificTopic?.id)}
+                                 onClick={(e) => { e.stopPropagation(); if (specificTopic) toggleFollow(specificTopic.id); }}
+                                 className={`p-1 rounded-md border transition-all ${isTopicFollowed ? 'bg-indigo-500/20 border-indigo-500/40 text-indigo-400' : 'bg-slate-800 border-slate-700 text-slate-500'} ${togglingIds.has(specificTopic?.id) ? 'opacity-50 keep-cursor' : ''}`}
+                                 title="Save Topic"
+                               >
+                                 <Target className={`h-3 w-3 ${togglingIds.has(specificTopic?.id) ? 'animate-pulse' : ''}`} />
+                               </button>
+                               <button
+                                 disabled={togglingIds.has(categoryTopic?.id)}
+                                 onClick={(e) => { e.stopPropagation(); if (categoryTopic) toggleFollow(categoryTopic.id); }}
+                                 className={`p-1 rounded-md border transition-all ${isCatFollowed ? 'bg-amber-500/20 border-amber-500/40 text-amber-400' : 'bg-slate-800 border-slate-700 text-slate-500'} ${togglingIds.has(categoryTopic?.id) ? 'opacity-50 keep-cursor' : ''}`}
+                                 title={`Follow ${domain}`}
+                               >
+                                 {isCatFollowed ? <BookmarkCheck className={`h-3 w-3 ${togglingIds.has(categoryTopic?.id) ? 'animate-pulse' : ''}`} /> : <Bookmark className={`h-3 w-3 ${togglingIds.has(categoryTopic?.id) ? 'animate-pulse' : ''}`} />}
+                               </button>
+                             </div>
+                           );
+                        })()}
+
                         <ChevronDown className="h-4 w-4" />
                       </div>
                     </div>
@@ -721,13 +834,25 @@ const Explore = ({ socket, user }) => {
                 const title = (topic.title || '').toLowerCase();
                 const isMatch = title.includes(searchQuery.toLowerCase());
                 const isBroad = broadTopicsList.includes(title);
-                const hasSearch = searchQuery.trim().length > 0;
-                const isPlayed = (topicTotals[topic.title] || 0) > 0;
                 
-                return isMatch && !isBroad && (hasSearch || isPlayed);
+                // Show ALL non-broad topics (including unplayed) — no isPlayed gate
+                return isMatch && !isBroad;
               })
-              .sort((a, b) => (topicTotals[b.title] || 0) - (topicTotals[a.title] || 0))
-              .slice(0, 5) // Display top 5 topics as per plan
+              .sort((a, b) => {
+                const playA = topicTotals[a.title] || 0;
+                const playB = topicTotals[b.title] || 0;
+                if (playA !== playB) return playB - playA; // Most played first
+                
+                // Tiebreaker: Personalization — topics in followed categories rank higher
+                const domainA = getTopicDomain(a.title).domain;
+                const domainB = getTopicDomain(b.title).domain;
+                const catTopicA = topics.find(t => t.title.toLowerCase() === domainA.toLowerCase());
+                const catTopicB = topics.find(t => t.title.toLowerCase() === domainB.toLowerCase());
+                const scoreA = (catTopicA && followedIds.includes(catTopicA.id)) ? 1 : 0;
+                const scoreB = (catTopicB && followedIds.includes(catTopicB.id)) ? 1 : 0;
+                return scoreB - scoreA;
+              })
+              .slice(0, 5)
               .map((topic, index) => (
               <div 
                 key={topic.id} 
@@ -741,20 +866,56 @@ const Explore = ({ socket, user }) => {
                     <span className={`text-[10px] font-black uppercase tracking-wider px-3 py-1 rounded-full border ${getTopicDomain(topic.title).color}`}>
                       {getTopicDomain(topic.title).domain}
                     </span>
-                    <button
-                      onClick={(e) => { e.stopPropagation(); toggleFollow(topic.id); }}
-                      className={`p-1.5 rounded-lg transition-all border ${
-                        followedIds.includes(topic.id)
-                          ? 'bg-amber-500/15 border-amber-500/30 hover:bg-red-500/15 hover:border-red-500/30'
-                          : 'bg-slate-800/50 border-slate-700/50 hover:bg-amber-500/15 hover:border-amber-500/30'
-                      }`}
-                      title={followedIds.includes(topic.id) ? 'Unfollow' : 'Follow'}
-                    >
-                      {followedIds.includes(topic.id)
-                        ? <BookmarkCheck className="h-4 w-4 text-amber-400" />
-                        : <Bookmark className="h-4 w-4 text-slate-500 hover:text-amber-400" />
-                      }
-                    </button>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {/* Save Topic (Target) */}
+                      <button
+                        disabled={togglingIds.has(topic.id)}
+                        onClick={(e) => { e.stopPropagation(); toggleFollow(topic.id); }}
+                        className={`p-1.5 rounded-lg transition-all border ${
+                          followedIds.includes(topic.id)
+                            ? 'bg-indigo-500/15 border-indigo-500/30 hover:bg-slate-800/15'
+                            : 'bg-slate-800/50 border-slate-700/50 hover:bg-indigo-500/15'
+                        } ${togglingIds.has(topic.id) ? 'opacity-50 keep-cursor' : ''}`}
+                        title={followedIds.includes(topic.id) ? 'Unsave Topic' : 'Save Topic'}
+                      >
+                        {followedIds.includes(topic.id)
+                          ? <Target className={`h-4 w-4 text-indigo-400 ${togglingIds.has(topic.id) ? 'animate-pulse' : ''}`} />
+                          : <Target className={`h-4 w-4 text-slate-500 hover:text-indigo-400 ${togglingIds.has(topic.id) ? 'animate-pulse' : ''}`} />
+                        }
+                      </button>
+
+                      {/* Follow Category (Bookmark) */}
+                      {(() => {
+                        const domain = getTopicDomain(topic.title).domain;
+                        const categoryTopic = topics.find(t => t.title.toLowerCase() === domain.toLowerCase());
+                        const isCatFollowed = categoryTopic ? followedIds.includes(categoryTopic.id) : false;
+                        
+                        return (
+                        <button
+                          disabled={togglingIds.has(categoryTopic?.id)}
+                          onClick={(e) => { 
+                             e.stopPropagation(); 
+                             if (categoryTopic) {
+                               toggleFollow(categoryTopic.id);
+                             } else {
+                               // If category topic doesn't exist yet, we can't easily follow it without proposing
+                             }
+                          }}
+                          className={`p-1.5 rounded-lg transition-all border ${
+                            isCatFollowed
+                              ? 'bg-amber-500/15 border-amber-500/30 hover:bg-slate-800/15'
+                              : 'bg-slate-800/50 border-slate-700/50 hover:bg-amber-500/15'
+                          } ${(!categoryTopic || togglingIds.has(categoryTopic?.id)) ? 'opacity-30 keep-cursor' : ''}`}
+                          title={isCatFollowed ? `Unfollow ${domain}` : `Follow ${domain} Category`}
+                        >
+                          {isCatFollowed
+                            ? <BookmarkCheck className={`h-4 w-4 text-amber-400 ${togglingIds.has(categoryTopic?.id) ? 'animate-pulse' : ''}`} />
+                            : <Bookmark className={`h-4 w-4 text-slate-500 hover:text-amber-400 ${togglingIds.has(categoryTopic?.id) ? 'animate-pulse' : ''}`} />
+                          }
+                        </button>
+                        );
+                      })()}
+                    </div>
                   </div>
                 </div>
                 

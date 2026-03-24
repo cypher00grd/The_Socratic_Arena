@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
-import { ArrowLeft, Vote, Activity, Layers, Play, Clock } from 'lucide-react';
+import { ArrowLeft, Vote, Activity, Layers, Play, Clock, Swords } from 'lucide-react';
 
-const TopicMatches = ({ socket }) => {
+const TopicMatches = ({ socket, user }) => {
   const { topicTitle } = useParams();
   const navigate = useNavigate();
   const [matches, setMatches] = useState([]);
@@ -188,7 +188,7 @@ const TopicMatches = ({ socket }) => {
             </div>
             <div>
               <h1 className="text-4xl font-extrabold text-slate-100 tracking-tight leading-none">{decodedTitle}</h1>
-              <p className="text-slate-400 text-lg mt-2 font-medium">Topic Headquarters • {matches.length} matches total</p>
+              <p className="text-slate-400 text-lg mt-2 font-medium">Topic Headquarters • {liveMatches.length + deliberatingMatches.length} available matches</p>
             </div>
           </div>
         </header>
@@ -228,13 +228,23 @@ const TopicMatches = ({ socket }) => {
                         </p>
                     </div>
                     <div className="mt-auto">
-                      <button 
-                        onClick={() => navigate(`/arena/${match.id}`, { state: { roomId: match.id, topic: match.topic_title, isSpectator: true } })}
-                        className="w-full bg-red-600 hover:bg-red-500 text-white font-bold py-3 rounded-xl transition-all shadow-lg shadow-red-500/20 flex items-center justify-center gap-2"
-                      >
-                        <Play className="h-4 w-4 fill-current" />
-                        Spectate Live
-                      </button>
+                      {user && (match.critic_id === user.id || match.defender_id === user.id) ? (
+                        <button 
+                          onClick={() => navigate(`/arena/${match.id}`, { state: { roomId: match.id, topic: match.topic_title, isSpectator: false } })}
+                          className="w-full bg-amber-600 hover:bg-amber-500 text-white font-bold py-3 rounded-xl transition-all shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 animate-pulse"
+                        >
+                          <Swords className="h-4 w-4 fill-current" />
+                          REJOIN MATCH
+                        </button>
+                      ) : (
+                        <button 
+                          onClick={() => navigate(`/arena/${match.id}`, { state: { roomId: match.id, topic: match.topic_title, isSpectator: true } })}
+                          className="w-full bg-red-600 hover:bg-red-500 text-white font-bold py-3 rounded-xl transition-all shadow-lg shadow-red-500/20 flex items-center justify-center gap-2"
+                        >
+                          <Play className="h-4 w-4 fill-current" />
+                          Spectate Live
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}

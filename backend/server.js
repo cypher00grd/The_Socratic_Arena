@@ -36,15 +36,15 @@ async function generateWithRetry(prompt, maxRetries = 3, expectJson = true) {
   let attempt = 0;
   while (attempt < maxRetries) {
     try {
-      const model = genAI.getGenerativeModel({ 
-        model: "gemini-2.5-flash", 
-        generationConfig: expectJson ? { responseMimeType: "application/json" } : {} 
+      const model = genAI.getGenerativeModel({
+        model: "gemini-2.5-flash",
+        generationConfig: expectJson ? { responseMimeType: "application/json" } : {}
       });
       const result = await model.generateContent(prompt);
       const text = result.response.text();
-      
+
       if (!expectJson) return text;
-      
+
       // Safe JSON parse
       const cleanText = text.replace(/```json/gi, '').replace(/```/g, '').trim();
       const match = cleanText.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
@@ -113,7 +113,7 @@ async function evaluateDebate(transcript, matchId) {
 
     // 2. Call Gemini
     let aiResponse = { highlights: [], overall_summary: "Debate concluded." };
-    
+
     if (ENABLE_ADVANCED_AI) {
       const prompt = `You are a strict master debate judge. Analyze this transcript. You MUST respond with ONLY a valid JSON object. Format exactly like this:
   {
@@ -129,7 +129,7 @@ async function evaluateDebate(transcript, matchId) {
   
   Debate transcript:
   ${debateText}`;
-  
+
       aiResponse = await generateWithRetry(prompt, 3, true);
     }
 
@@ -400,7 +400,7 @@ app.post('/api/matches/:id/summary', async (req, res) => {
 
     // Use robust helper (expectJson = false)
     let summary = await generateWithRetry(prompt, 3, false);
-    
+
     // remove quotes if any
     summary = summary.replace(/^["']|["']$/g, '');
 
@@ -559,6 +559,16 @@ const startRoomTimer = (roomId) => {
           transcript: room.transcript
         }
       });
+
+      // Broadcast globally so ALL Explore pages remove this match from "Live Arenas" instantly
+      io.emit('match_ended', { matchId: roomId });
+
+      // Transactional Cleanup: Purge from memory only after results are handled
+      // We wait 5 seconds to ensure all final match_over events are received by clients
+      setTimeout(() => {
+        cleanupRoom(roomId);
+        console.log(`[Timer] Room ${roomId} memory purged after timeout.`);
+      }, 5000);
     }
   }, 1000);
 };
@@ -581,22 +591,34 @@ const cleanupRoom = (roomId) => {
 /**
  * Resolve Abandoned Match (Grace Period Expired)
  * Handles Elo penalties and stayer rewards.
+ * CRITICAL: All socket emissions happen BEFORE cleanupRoom to prevent event loss.
  */
 const resolveAbandonedMatch = async (matchId, leaverRole) => {
   const room = activeRooms[matchId];
-  if (!room) return;
+  if (!room) {
+    // Failsafe: If room is already gone, at least update the DB status
+    console.log(`[resolve_abandoned] Room ${matchId} already gone from memory. Forcing DB status update.`);
+    await supabase.from('matches').update({ status: 'abandoned' }).eq('id', matchId).eq('status', 'active');
+    io.emit('match_ended', { matchId });
+    return;
+  }
 
+  // Capture transcript reference BEFORE any cleanup can wipe it
+  const savedTranscript = [...(room.transcript || [])];
   const leaverId = leaverRole === 'critic' ? room.critic_id : room.defender_id;
   const stayerId = leaverRole === 'critic' ? room.defender_id : room.critic_id;
   const matchDuration = (Date.now() - room.startTime) / 1000;
 
-  console.log(`[resolve_abandoned] Match ${matchId} abandoned by ${leaverRole} (${leaverId}). Duration: ${matchDuration}s`);
+  console.log(`[resolve_abandoned] Match ${matchId} abandoned by ${leaverRole} (${leaverId}). Duration: ${matchDuration}s. Transcript: ${savedTranscript.length} messages.`);
 
   try {
-    // 1. Fetch Profiles
-    const { data: profiles } = await supabase.from('profiles').select('*').in('id', [leaverId, stayerId]);
-    const leaverProfile = profiles.find(p => p.id === leaverId);
-    const stayerProfile = profiles.find(p => p.id === stayerId);
+    // 1. Fetch Profiles securely
+    const { data: profiles, error: fetchErr } = await supabase.from('profiles').select('*').in('id', [leaverId, stayerId]);
+    if (fetchErr) console.error('[resolve_abandoned] Profile fetch err:', fetchErr);
+
+    const safeProfiles = profiles || [];
+    const leaverProfile = safeProfiles.find(p => p.id === leaverId) || {};
+    const stayerProfile = safeProfiles.find(p => p.id === stayerId) || {};
 
     const rLeaver = leaverProfile.elo_rating || 1200;
     const rStayer = stayerProfile.elo_rating || 1200;
@@ -611,7 +633,7 @@ const resolveAbandonedMatch = async (matchId, leaverRole) => {
 
     // Standard Elo Loss (S = 0)
     const eLeaver = 1 / (1 + Math.pow(10, (rStayer - rLeaver) / 400));
-    const kLeaver = 30; // Standard K for abandonment
+    const kLeaver = 30;
     let newLeaverRating = Math.round(rLeaver + kLeaver * (0 - eLeaver));
 
     if (disconnectCount > 1) {
@@ -626,36 +648,88 @@ const resolveAbandonedMatch = async (matchId, leaverRole) => {
       const eStayer = 1 - eLeaver;
       const kStayer = 30;
       const standardGain = Math.round(kStayer * (1 - eStayer));
-      const cappedGain = Math.min(standardGain, 10); // Gain capped at +10 for stayer
+      const cappedGain = Math.min(standardGain, 10);
       newStayerRating = rStayer + cappedGain;
       console.log(`[resolve_abandoned] Stayer gain: ${cappedGain} (Standard: ${standardGain})`);
     } else {
       console.log(`[resolve_abandoned] Match < 1 min. No Elo change for stayer.`);
     }
 
-    // 4. Atomic Updates
-    await Promise.all([
-      supabase.from('profiles').update({
+    // 4. Atomic Updates — use the captured transcript, not room.transcript
+    const updatePromises = [];
+
+    if (leaverProfile.id) {
+      updatePromises.push(supabase.from('profiles').update({
         elo_rating: newLeaverRating,
         last_disconnect_at: now.toISOString(),
         disconnect_count_24h: disconnectCount
-      }).eq('id', leaverId),
-      supabase.from('profiles').update({ elo_rating: newStayerRating }).eq('id', stayerId),
+      }).eq('id', leaverId));
+    }
+
+    if (stayerProfile.id) {
+      updatePromises.push(supabase.from('profiles').update({ elo_rating: newStayerRating }).eq('id', stayerId));
+    }
+
+    updatePromises.push(
       supabase.from('matches').update({
         status: 'abandoned',
-        end_reason: 'abandoned',
-        winner_id: stayerId,
-        transcript: room.transcript
+        winner_id: stayerProfile.id ? stayerId : null,
+        transcript: savedTranscript
       }).eq('id', matchId)
-    ]);
+    );
 
-    console.log(`[resolve_abandoned] Match ${matchId} resolved. Leaver: ${newLeaverRating}, Stayer: ${newStayerRating}`);
+    const results = await Promise.all(updatePromises);
+    results.forEach((r, idx) => {
+      if (r.error) console.error(`[resolve_abandoned] Update err on promise ${idx}:`, r.error);
+    });
+
+    console.log(`[resolve_abandoned] Match ${matchId} resolved as ABANDONED. Leaver: ${newLeaverRating}, Stayer: ${newStayerRating}`);
   } catch (err) {
     console.error('[resolve_abandoned] Error:', err);
-  } finally {
-    cleanupRoom(matchId);
+    // Last-resort failsafe: Even if Elo calc fails, STILL update the DB status so it's not stuck as 'active'
+    try {
+      await supabase.from('matches').update({ status: 'abandoned', transcript: savedTranscript }).eq('id', matchId).eq('status', 'active');
+    } catch (e2) {
+      console.error('[resolve_abandoned] Failsafe DB update also failed:', e2);
+    }
+  }
+
+  // 5. EMIT ALL EVENTS *BEFORE* cleanupRoom — the room still exists at this point
+  // Notify participants in the match room
+  io.to(matchId).emit('opponent_disconnected', {
+    type: 'abandoned',
+    leaverRole: leaverRole === 'critic' ? 'Critic' : 'Defender',
+    leaverUserId: leaverId,
+    message: `${leaverRole === 'critic' ? 'Critic' : 'Defender'} failed to reconnect. Match abandoned.`,
+    redirectDelay: 3000
+  });
+
+  // Broadcast globally so ALL Explore pages remove this match from "Live Arenas" instantly
+  io.emit('match_ended', { matchId });
+
+  // 6. NOW it's safe to clean up — all events have been sent
+  cleanupRoom(matchId);
+};
+
+/**
+ * Cleanup Zombie Matches
+ * Marks any 'active' match in DB as 'abandoned' on server startup
+ */
+const cleanupZombieMatches = async () => {
+  console.log('[startup] Cleaning up zombie matches...');
+  const { error } = await supabase
+    .from('matches')
+    .update({ status: 'abandoned' })
+    .eq('status', 'active');
+
+  if (error) {
+    console.error('[startup] Zombie cleanup error:', error);
+  } else {
+    console.log('[startup] Zombie matches cleared.');
   }
 };
+
+cleanupZombieMatches();
 
 /**
  * AI Rate Limiter (Sliding Window)
@@ -667,10 +741,10 @@ const checkRateLimit = (userId, endpoint, maxRequests, windowMs) => {
   if (!aiRateLimits.has(userId)) aiRateLimits.set(userId, {});
   const userLimits = aiRateLimits.get(userId);
   if (!userLimits[endpoint]) userLimits[endpoint] = [];
-  
+
   const now = Date.now();
   userLimits[endpoint] = userLimits[endpoint].filter(t => now - t < windowMs);
-  
+
   if (userLimits[endpoint].length >= maxRequests) {
     return false; // Rate limited
   }
@@ -875,6 +949,19 @@ io.on('connection', (socket) => {
     }
 
     // Sync state
+    if (room.status === 'timeout' || room.status === 'finished') {
+      console.log(`[rejoin] Room ${roomId} is already ${room.status}. Emitting match_over to ${socket.id}`);
+      socket.emit('match_over', {
+        reason: room.status,
+        finalState: {
+          criticTime: room.criticTime,
+          defenderTime: room.defenderTime,
+          transcript: room.transcript
+        }
+      });
+      return;
+    }
+
     socket.emit('match_found', {
       roomId,
       topic: room.topic,
@@ -883,6 +970,7 @@ io.on('connection', (socket) => {
         [room.players.defender]: 'Defender'
       },
       transcript: room.transcript,
+      activeSpeaker: room.activeSpeaker,
       resume: true
     });
 
@@ -939,10 +1027,10 @@ io.on('connection', (socket) => {
     }
     // Feature Flag Check
     if (!ENABLE_ADVANCED_AI) {
-      socket.emit('ai_intervention_result', { 
+      socket.emit('ai_intervention_result', {
         targetMessageId,
-        flagged: false, 
-        error: "The AI Judge is currently disabled to conserve API limits." 
+        flagged: false,
+        error: "The AI Judge is currently disabled to conserve API limits."
       });
       return;
     }
@@ -1093,9 +1181,32 @@ Respond STRICTLY with a valid JSON object and nothing else: {"isDuplicate": true
         });
       } else {
         console.log(`[AI Bouncer] Approved new topic: "${newTopic}"`);
-        await supabase.from('topics').insert([{ title: newTopic, category: 'Community' }]);
+
+        // AI-Powered Category Detection: Ask Gemini to classify the topic
+        const validCategories = ['Food', 'Health', 'Science', 'Technology', 'Geopolitics', 'Politics', 'Society', 'Philosophy', 'Sports', 'Economics', 'Entertainment'];
+        let detectedCategory = 'General';
+        try {
+          const categoryPrompt = `You are a topic classifier for a debate platform.
+Classify this debate topic into exactly ONE category from the list below.
+Topic: "${newTopic}"
+Categories: ${validCategories.join(', ')}
+If none fit well, use "General".
+Respond STRICTLY with a valid JSON object and nothing else: {"category": "CategoryName"}`;
+
+          const catResult = await generateWithRetry(categoryPrompt, 2, true);
+          if (catResult?.category && validCategories.includes(catResult.category)) {
+            detectedCategory = catResult.category;
+            console.log(`[AI Bouncer] Detected category for "${newTopic}": ${detectedCategory}`);
+          } else {
+            console.log(`[AI Bouncer] Category detection returned invalid result, defaulting to General:`, catResult);
+          }
+        } catch (catErr) {
+          console.error('[AI Bouncer] Category detection failed, using General:', catErr);
+        }
+
+        await supabase.from('topics').insert([{ title: newTopic, category: detectedCategory }]);
         io.emit('new_topic_added');
-        socket.emit('topic_result', { success: true, message: 'New arena created successfully! It is now on the grid.' });
+        socket.emit('topic_result', { success: true, message: `New arena created successfully in ${detectedCategory}! It is now on the grid.` });
       }
     } catch (err) {
       console.error('[AI Bouncer] Error:', err);
@@ -1294,7 +1405,11 @@ Respond STRICTLY with a valid JSON object and nothing else: {"isDuplicate": true
         defenderTime: 300,
         transcript: [],
         status: 'active',
-        startTime: Date.now()
+        startTime: Date.now(),
+        lifelines: {
+          [criticUserId]: 1,
+          [defenderUserId]: 1
+        }
       };
 
       // Emit match_found — clients identify their role via userId
@@ -1379,10 +1494,66 @@ Respond STRICTLY with a valid JSON object and nothing else: {"found": true/false
     }
   });
 
+  socket.on('semantic_search_myarena_trending', async ({ query, contextTopics }) => {
+    const userId = socket.verifiedUserId;
+    if (!checkRateLimit(userId, 'semantic_search_trending', 10, 60000)) {
+      return socket.emit('semantic_search_myarena_trending_result', { found: false, matchedTopic: null, error: 'Rate limit exceeded' });
+    }
+    try {
+      console.log(`[Semantic Search MyArena Trending] Searching for "${query}" among ${contextTopics?.length} topics`);
+      if (!contextTopics || contextTopics.length === 0) {
+        return socket.emit('semantic_search_myarena_trending_result', { found: false, matchedTopic: null });
+      }
+
+      const prompt = `You are a highly intelligent semantic search routing AI.
+User query: "${query}"
+Available topics: ${JSON.stringify(contextTopics)}
+
+Task: Determine which single topic from the 'Available topics' list best matches the meaning, intent, or core subject of the 'User query'.
+Even a rough conceptual match is valid (e.g., "is veg good" perfectly matches "veg vs non-veg"). If there is absolutely zero relation to any topic, then it's not found.
+Respond STRICTLY with a valid JSON object and nothing else: {"found": true/false, "matchedTopic": "exact string of matched topic if true, or null"}`;
+
+      const jsonResult = await generateWithRetry(prompt, 3, true);
+      console.log(`[Semantic Search MyArena Trending] Result:`, jsonResult);
+      socket.emit('semantic_search_myarena_trending_result', jsonResult);
+    } catch (err) {
+      console.error('[Semantic Search MyArena Trending] Error:', err);
+      socket.emit('semantic_search_myarena_trending_result', { found: false, matchedTopic: null });
+    }
+  });
+
+  socket.on('semantic_search_myarena_saved', async ({ query, contextTopics }) => {
+    const userId = socket.verifiedUserId;
+    if (!checkRateLimit(userId, 'semantic_search_saved', 10, 60000)) {
+      return socket.emit('semantic_search_myarena_saved_result', { found: false, matchedTopic: null, error: 'Rate limit exceeded' });
+    }
+    try {
+      console.log(`[Semantic Search MyArena Saved] Searching for "${query}" among ${contextTopics?.length} topics`);
+      if (!contextTopics || contextTopics.length === 0) {
+        return socket.emit('semantic_search_myarena_saved_result', { found: false, matchedTopic: null });
+      }
+
+      const prompt = `You are a highly intelligent semantic search routing AI.
+User query: "${query}"
+Available topics: ${JSON.stringify(contextTopics)}
+
+Task: Determine which single topic from the 'Available topics' list best matches the meaning, intent, or core subject of the 'User query'.
+Even a rough conceptual match is valid (e.g., "is veg good" perfectly matches "veg vs non-veg"). If there is absolutely zero relation to any topic, then it's not found.
+Respond STRICTLY with a valid JSON object and nothing else: {"found": true/false, "matchedTopic": "exact string of matched topic if true, or null"}`;
+
+      const jsonResult = await generateWithRetry(prompt, 3, true);
+      console.log(`[Semantic Search MyArena Saved] Result:`, jsonResult);
+      socket.emit('semantic_search_myarena_saved_result', jsonResult);
+    } catch (err) {
+      console.error('[Semantic Search MyArena Saved] Error:', err);
+      socket.emit('semantic_search_myarena_saved_result', { found: false, matchedTopic: null });
+    }
+  });
+
   /**
    * Spectator Joining
    */
-  socket.on('join_as_spectator', (roomId) => {
+  socket.on('join_as_spectator', async (roomId) => {
     socket.join(roomId);
     console.log(`[matchmaking] 👁️ Spectator ${socket.id} joined room ${roomId}`);
 
@@ -1395,6 +1566,34 @@ Respond STRICTLY with a valid JSON object and nothing else: {"found": true/false
         defenderTime: room.defenderTime,
         activeSpeaker: room.activeSpeaker
       });
+    } else {
+      console.log(`[matchmaking] 👁️ Room ${roomId} inactive in memory. Attempting DB recovery for spectator...`);
+      try {
+        const { data } = await supabase.from('matches').select('transcript, status').eq('id', roomId).single();
+        if (data) {
+          // Hydrate the UI briefly so it's not a frozen empty screen
+          socket.emit('spectator_sync', {
+            transcript: data.transcript || [],
+            criticTime: 0,
+            defenderTime: 0,
+            activeSpeaker: 'Critic'
+          });
+
+          // Emit match_over to trigger the beautiful "DEBATE CONCLUDED" overlay 
+          // and auto-redirect them to the review page after a 4s grace period!
+          socket.emit('match_over', {
+            reason: 'concluded',
+            winner: 'None',
+            finalState: {
+              transcript: data.transcript || [],
+              criticTime: 0,
+              defenderTime: 0
+            }
+          });
+        }
+      } catch (err) {
+        console.error('[Spectator Recovery Error]', err);
+      }
     }
   });
 
@@ -1445,18 +1644,8 @@ Respond STRICTLY with a valid JSON object and nothing else: {"found": true/false
 
         gracePeriodTimeouts[matchId][role] = setTimeout(async () => {
           console.log(`[grace_period] 💀 Expired for ${role} in ${matchId}. Abandoning.`);
-          if (activeRooms[matchId]) {
-            await resolveAbandonedMatch(matchId, role);
-
-            // Send detailed disconnect information to all participants including spectators
-            io.to(matchId).emit('opponent_disconnected', {
-              type: 'abandoned',
-              leaverRole: role === 'critic' ? 'Critic' : 'Defender',
-              leaverUserId: userId,
-              message: `${role === 'critic' ? 'Critic' : 'Defender'} failed to reconnect. Match abandoned.`,
-              redirectDelay: 3000
-            });
-          }
+          // resolveAbandonedMatch now handles ALL events + cleanup internally
+          await resolveAbandonedMatch(matchId, role);
         }, 30000);
       }
     }

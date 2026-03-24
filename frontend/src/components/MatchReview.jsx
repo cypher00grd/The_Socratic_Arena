@@ -9,7 +9,7 @@ const MatchReview = () => {
   const { matchId } = useParams();
   const navigate = useNavigate();
   const [match, setMatch] = useState(null);
-  const ENABLE_AI_HIGHLIGHTS = true; // Toggle to true to reveal highlights section
+  const ENABLE_AI_HIGHLIGHTS = false; // Disabled as per user request
   const [loading, setLoading] = useState(true);
   const [hasVoted, setHasVoted] = useState(false);
   const [currentUser, setCurrentUser] = useState(null);
@@ -24,23 +24,30 @@ const MatchReview = () => {
   // Memoize the chart data to prevent flickering
   const radarData = useMemo(() => {
     if (!match?.ai_scores) return [];
+    
+    // Helper to extract numeric score safely
+    const getScore = (player, metric) => {
+      const val = player?.[metric.toLowerCase()] ?? player?.[metric] ?? 0;
+      return Number(val) || 0;
+    };
+
     return [
       {
         subject: 'Logic',
-        Critic: match.ai_scores.critic?.logic ?? match.ai_scores.critic?.Logic ?? 0,
-        Defender: match.ai_scores.defender?.logic ?? match.ai_scores.defender?.Logic ?? 0,
+        Critic: getScore(match.ai_scores.critic, 'Logic'),
+        Defender: getScore(match.ai_scores.defender, 'Logic'),
         fullMark: 10
       },
       {
         subject: 'Facts',
-        Critic: match.ai_scores.critic?.facts ?? match.ai_scores.critic?.Facts ?? 0,
-        Defender: match.ai_scores.defender?.facts ?? match.ai_scores.defender?.Facts ?? 0,
+        Critic: getScore(match.ai_scores.critic, 'Facts'),
+        Defender: getScore(match.ai_scores.defender, 'Facts'),
         fullMark: 10
       },
       {
         subject: 'Relevance',
-        Critic: match.ai_scores.critic?.relevance ?? match.ai_scores.critic?.Relevance ?? 0,
-        Defender: match.ai_scores.defender?.relevance ?? match.ai_scores.defender?.Relevance ?? 0,
+        Critic: getScore(match.ai_scores.critic, 'Relevance'),
+        Defender: getScore(match.ai_scores.defender, 'Relevance'),
         fullMark: 10
       },
     ];

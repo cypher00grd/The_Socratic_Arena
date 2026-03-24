@@ -23,6 +23,26 @@ body {
   flex-direction: column;
 }
 
+/* ── Global Interactive Cursors ── 
+   Fixes the issue where buttons show a default arrow instead of a hand. */
+button:not(:disabled),
+a:not([aria-disabled="true"]),
+[role="button"]:not([aria-disabled="true"]),
+[role="link"]:not([aria-disabled="true"]) {
+  cursor: pointer;
+}
+
+button:disabled,
+a[aria-disabled="true"],
+[role="button"][aria-disabled="true"] {
+  cursor: not-allowed;
+}
+
+/* Override for seamless toggling */
+button.keep-cursor:disabled {
+  cursor: pointer !important;
+}
+
 
 /* ── Global Dark E-Sports Scrollbar ── */
 ::-webkit-scrollbar {

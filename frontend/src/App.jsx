@@ -134,7 +134,7 @@ const App = () => {
         />
         <Route
           path="/topic/:topicTitle"
-          element={session ? <TopicMatches socket={socket} /> : <Navigate to="/" replace />}
+          element={session ? <TopicMatches socket={socket} user={session.user} /> : <Navigate to="/" replace />}
         />
 
         {/* Fallback routing */}

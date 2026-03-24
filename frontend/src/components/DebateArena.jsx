@@ -169,8 +169,8 @@ const DebateArena = ({
       setRoomId(data.roomId);
       setPlayerRole(role);
       setMatchStatus('active');
-      setLocalTranscript([]);
-      setActiveSpeaker('Critic');
+      setLocalTranscript(data.transcript || []); // Fix: Prevent local clear on rejoin
+      setActiveSpeaker(data.activeSpeaker || 'Critic');
       setTopic(data.topic || '');
     };
 
@@ -251,14 +251,17 @@ const DebateArena = ({
       setPauseMessage('You lost connection. Attempting to rejoin...');
       setPauseCountdown(30);
       
-      // Set error message for self disconnect
-      setErrorMsg('🔴 Arena Error: Connection lost. Attempting to reconnect...');
+      // Fix: DO NOT set errorMsg here. Let the graceful isPaused UI handle it. 
+      // This ensures the user sees the beautiful 30s spinner countdown instead of a fatal error.
     };
     
     const handleSelfReconnect = () => {
-      if (user?.id && roomId) {
+      if (user?.id && roomId && !isSpectator) {
         console.log('[DebateArena] Reconnected! Emitting rejoin_match...');
         socket.emit('rejoin_match', { roomId, userId: user.id });
+      } else if (roomId && isSpectator) {
+        console.log('[DebateArena] Reconnected as spectator! Emitting join_as_spectator...');
+        socket.emit('join_as_spectator', roomId);
       }
     };
 
@@ -307,21 +310,12 @@ const DebateArena = ({
     socket.on('ai_intervention', handleAiResult);
 
     // 🚀 PROACTIVE REJOIN: If we mount and socket is already connected, rejoin immediately
-    if (socket.connected && user?.id && roomId) {
+    if (socket.connected && user?.id && roomId && !isSpectator) {
       console.log('[DebateArena] Already connected on mount. Emitting rejoin_match...');
       socket.emit('rejoin_match', { roomId, userId: user.id });
     }
 
-    // Pause Countdown Effect
-    let countdownInterval;
-    if (isPaused) {
-      countdownInterval = setInterval(() => {
-        setPauseCountdown(prev => Math.max(0, prev - 1));
-      }, 1000);
-    }
-
     return () => {
-      if (countdownInterval) clearInterval(countdownInterval);
       socket.off('match_found', handleMatchFound);
       socket.off('time_sync', handleTimeSync);
       socket.off('new_turn', handleNewTurn);
@@ -338,7 +332,20 @@ const DebateArena = ({
       socket.off('ai_intervention_result', handleAiResult);
       socket.off('ai_intervention', handleAiResult);
     };
-  }, [socket]);
+  }, [socket, user, roomId, isSpectator]);
+
+  // Pause Countdown Effect
+  useEffect(() => {
+    let interval;
+    if (isPaused) {
+      interval = setInterval(() => {
+        setPauseCountdown(prev => Math.max(0, prev - 1));
+      }, 1000);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isPaused]);
 
   const formatTime = (seconds) => {
     const mins = Math.floor(seconds / 60);

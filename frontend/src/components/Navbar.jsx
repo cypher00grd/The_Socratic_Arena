@@ -9,9 +9,10 @@ const Navbar = ({ user, onCreateArena, onJoinArena }) => {
   const isActive = (path) => location.pathname === path;
 
   return (
-    <nav className="h-16 w-full bg-slate-900/80 backdrop-blur-md border-b border-slate-800 sticky top-0 z-40 flex items-center justify-between px-6">
-      <div className="flex items-center gap-6">
-        <Link to="/" className="flex items-center gap-2 group">
+    <>
+      <nav className="h-16 w-full bg-slate-900/80 backdrop-blur-md border-b border-slate-800 sticky top-0 z-40 flex items-center justify-between px-6">
+        <div className="flex items-center gap-6">
+          <Link to="/" className="flex items-center gap-2 group">
           <div className="bg-gradient-to-br from-indigo-500 to-cyan-500 p-1.5 rounded-lg group-hover:shadow-[0_0_15px_rgba(99,102,241,0.5)] transition">
             <Shield className="h-5 w-5 text-white" />
           </div>
@@ -68,6 +69,7 @@ const Navbar = ({ user, onCreateArena, onJoinArena }) => {
           </button>
         </div>
       )}
+      </nav>
 
       <ProfileModal 
         isOpen={isProfileOpen} 
@@ -75,7 +77,7 @@ const Navbar = ({ user, onCreateArena, onJoinArena }) => {
         viewUser={user} 
         currentUserId={user?.id}
       />
-    </nav>
+    </>
   );
 };
 

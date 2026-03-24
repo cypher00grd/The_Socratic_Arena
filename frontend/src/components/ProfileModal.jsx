@@ -102,7 +102,7 @@ const ProfileModal = ({ isOpen, onClose, viewUser, currentUserId, currentUser })
 
 
     return (
-        <div className="fixed inset-0 z-50 flex items-start justify-end bg-black/60 backdrop-blur-sm p-4 sm:p-6 pt-20 sm:pt-24 pr-4 sm:pr-8">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 sm:p-6">
             {/* 2. Modal Card Container */}
             <div
                 ref={modalRef}
