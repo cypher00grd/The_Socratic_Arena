@@ -119,12 +119,7 @@ async function evaluateDebate(transcript, matchId) {
   {
     "critic": { "logic": <1-10>, "facts": <1-10>, "relevance": <1-10>, "feedback": "<short summary>" },
     "defender": { "logic": <1-10>, "facts": <1-10>, "relevance": <1-10>, "feedback": "<short summary>" },
-    "overall_summary": "<1 liner description of the whole debate>",
-    "highlights": [
-      { "quote": "<exact quote from transcript>", "author_role": "critic", "context": "<brief reason why this was impactful>" },
-      { "quote": "<another quote>", "author_role": "defender", "context": "<brief reason>" },
-      { "quote": "<third quote>", "author_role": "critic or defender", "context": "<brief reason>" }
-    ]
+    "overall_summary": "<1 liner description of the whole debate>"
   }
   
   Debate transcript:
@@ -134,12 +129,12 @@ async function evaluateDebate(transcript, matchId) {
     }
 
     try {
-      const { highlights, ...scoresOnly } = aiResponse;
+      const scoresOnly = aiResponse;
 
       // 3. Update Supabase
       const { error: updateError } = await supabase.from('matches').update({
         ai_scores: scoresOnly,
-        highlights: highlights || []
+        highlights: []
       }).eq('id', matchId);
 
       if (updateError) {
