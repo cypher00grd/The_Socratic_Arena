@@ -398,9 +398,35 @@ Distributed under the **MIT License**. See `LICENSE` for more information.
 
 ---
 
-## 👨‍💻 Author
+## 👨‍💻 Authors
 
-**Ayush Kumar** — [@Ayush-Kumar0207](https://github.com/Ayush-Kumar0207)
+**Ayush Kumar** — [@Ayush-Kumar0207](https://github.com/Ayush-Kumar0207)  
+**Ravi Prashant** — [@cypher00grd](https://github.com/cypher00grd)
+
+<br />
+
+<table align="center">
+  <tr>
+    <td align="center">
+      <a href="https://github.com/Ayush-Kumar0207">
+        <img src="https://github.com/Ayush-Kumar0207.png" width="100px;" alt="Ayush Kumar"/>
+        <br />
+        <sub><b>Ayush Kumar</b></sub>
+      </a>
+      <br />
+      <p><i>Full Stack & Core Development</i></p>
+    </td>
+    <td align="center">
+      <a href="https://github.com/cypher00grd">
+        <img src="https://github.com/cypher00grd.png" width="100px;" alt="Ravi Prashant"/>
+        <br />
+        <sub><b>Ravi Prashant</b></sub>
+      </a>
+      <br />
+      <p><i>Full Stack & Core Development</i></p>
+    </td>
+  </tr>
+</table>
 
 Built with passion for structured discourse and the belief that better debates make better thinkers.
 
