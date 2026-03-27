@@ -15,6 +15,7 @@
 // Why first? Because other configuration (like PORT or CORS origin) may depend on env values.
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 import { config } from 'dotenv';
+import crypto from 'crypto';
 config();
 
 // FEATURE FLAG: Logic control for high-cost Gemini AI features
@@ -474,7 +475,7 @@ const gracePeriodTimeouts = {}; // roomId -> { critic: timeout, defender: timeou
  * Generate unique room ID for matches
  */
 const generateRoomId = () => {
-  return `room_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  return crypto.randomUUID();
 };
 
 /**
@@ -873,20 +874,26 @@ io.on('connection', (socket) => {
         }
       }
 
-      let roomId;
+      let roomId = generateRoomId();
+      let isTransient = false;
+
       try {
         const { data, error } = await withTimeout(supabase.from('matches').insert({
+          id: roomId,
           topic: topicTitle,
           topic_title: topicTitle,
           status: 'active',
           critic_id: critic.userId,
           defender_id: defender.userId
         }).select().single(), 10000);
-        if (error) throw error;
-        roomId = data.id;
+        
+        if (error) {
+          console.warn('[matchmaking] DB Insert failed, match will be transient:', error.message);
+          isTransient = true;
+        }
       } catch (err) {
-        console.error('Match creation error:', err);
-        roomId = `room_${Date.now()}`;
+        console.error('[matchmaking] Match creation timeout, match will be transient:', err);
+        isTransient = true;
       }
 
       // Join Room

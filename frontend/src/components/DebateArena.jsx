@@ -88,6 +88,14 @@ const DebateArena = ({
             setErrorMsg("Critical Error: No Match ID found in URL.");
             return;
         }
+
+        // UUID Format Validation
+        const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+        if (!uuidRegex.test(matchId)) {
+            setErrorMsg("🔴 Arena Error: Invalid Match ID format. Redirecting to Explore...");
+            setTimeout(() => navigate('/explore'), 3000);
+            return;
+        }
         
         // CRITICAL: Wait for the user object to exist before calculating roles!
         if (!user && !user?.id) { 
@@ -99,17 +107,14 @@ const DebateArena = ({
         }
 
         try {
-            setLoadingMsg("Fetching battle data from database...");
+            setLoadingMsg("Securely initializing battle connection...");
             const { data: match, error } = await supabase
                 .from('matches')
                 .select('*')
                 .eq('id', matchId)
-                .single();
-
-            if (error) throw error;
+                .maybeSingle(); // Use maybeSingle to avoid throw on missing record
 
             if (match?.status === 'abandoned') {
-                // Match is already dead — show specific error and redirect
                 setErrorMsg('🔴 Arena Error: This match was abandoned due to disconnection. Redirecting to Explore...');
                 setTimeout(() => navigate('/explore'), 3000);
                 return;
@@ -117,30 +122,37 @@ const DebateArena = ({
 
             if (match) {
                 setTopic(match.topic_title || match.topic);
-                
-                // THE PARADOX FIX: Stop waiting for the socket event that already passed.
                 if (match.status !== 'abandoned') {
                     setMatchStatus('active');
                 }
 
                 // Deterministic Role Assignment
-                if (user.id === match.critic_id) {
+                if (user?.id === match.critic_id) {
                     setPlayerRole('Critic');
-                } else if (user.id === match.defender_id) {
+                } else if (user?.id === match.defender_id) {
                     setPlayerRole('Defender');
                 } else {
                     setPlayerRole('Spectator');
                 }
+                setIsInitializing(false);
+            } else {
+                // Topic might be in location state if it's a fresh creation
+                if (initialTopic) setTopic(initialTopic);
+                
+                // If match not in DB yet (Transient), we wait for handleMatchFound (Socket)
+                setLoadingMsg("Synchronizing live stream with server...");
+                // We don't setIsInitializing(false) yet; socket will trigger it via setMatchStatus('active')
             }
-            setIsInitializing(false);
         } catch (err) {
-            console.error("Arena Initialization Failed:", err);
-            setErrorMsg(err.message || "Failed to load match data.");
+            console.warn("Arena DB Fetch Warning (might be a transient match):", err);
+            // Don't set errorMsg yet, let socket attempt to hydrate
+            if (initialTopic) setTopic(initialTopic);
+            setLoadingMsg("Synchronizing live stream with server...");
         }
     };
 
     initArena();
-  }, [matchId, user]);
+  }, [matchId, user, initialTopic]);
 
   const scrollToBottomSafe = () => {
       if (chatContainerRef.current) {
@@ -169,9 +181,10 @@ const DebateArena = ({
       setRoomId(data.roomId);
       setPlayerRole(role);
       setMatchStatus('active');
-      setLocalTranscript(data.transcript || []); // Fix: Prevent local clear on rejoin
+      setLocalTranscript(data.transcript || []); 
       setActiveSpeaker(data.activeSpeaker || 'Critic');
       setTopic(data.topic || '');
+      setIsInitializing(false); // Unlock UI for transient rooms
     };
 
     const handleTimeSync = ({ criticTime: ct, defenderTime: dt, activeSpeaker: as }) => {
