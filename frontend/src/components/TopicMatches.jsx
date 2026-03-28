@@ -1,11 +1,16 @@
 import { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
-import { ArrowLeft, Vote, Activity, Layers, Play, Clock, Swords } from 'lucide-react';
+import { ArrowLeft, Vote, Activity, Layers, Play, Clock, Swords, Trophy } from 'lucide-react';
 
 const TopicMatches = ({ socket, user }) => {
   const { topicTitle } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
+  const queryParams = new URLSearchParams(location.search);
+  const urlStatus = queryParams.get('status');
+  const { filterStatus: stateStatus } = location.state || {};
+  const activeFilter = urlStatus || stateStatus;
   const decodedTitle = decodeURIComponent(topicTitle);
   const [matches, setMatches] = useState(() => {
     try { return JSON.parse(localStorage.getItem(`topic_matches_${decodedTitle}`)) || []; } catch { return []; }
@@ -43,7 +48,7 @@ const TopicMatches = ({ socket, user }) => {
           .from('matches')
           .select('*')
           .eq('topic_title', decodedTitle)
-          .in('status', ['active', 'pending_votes'])
+          .in('status', ['active', 'pending_votes', 'completed'])
           .order('created_at', { ascending: false });
 
         if (error) throw error;
@@ -129,8 +134,9 @@ const TopicMatches = ({ socket, user }) => {
 
   const [summaries, setSummaries] = useState({});
 
-  const liveMatches = matches.filter(m => m.status === 'active');
-  const deliberatingMatches = matches.filter(m => m.status === 'pending_votes');
+  const liveMatches = matches.filter(m => m.status === 'active' && (!activeFilter || activeFilter === 'active'));
+  const deliberatingMatches = matches.filter(m => m.status === 'pending_votes' && (!activeFilter || activeFilter === 'pending_votes'));
+  const completedMatches = matches.filter(m => m.status === 'completed' && (!activeFilter || activeFilter === 'completed'));
 
   useEffect(() => {
     const fetchMissingSummaries = async () => {
@@ -172,6 +178,9 @@ const TopicMatches = ({ socket, user }) => {
     if (match.status === 'active') {
        return 'Live debate in progress. Spectate to see the action!';
     }
+    if (match.status === 'completed') {
+       return 'Debate resolved. View final report and verdict.';
+    }
     if (match.ai_scores?.overall_summary) {
       return match.ai_scores.overall_summary;
     }
@@ -210,7 +219,7 @@ const TopicMatches = ({ socket, user }) => {
             </div>
             <div>
               <h1 className="text-4xl font-extrabold text-slate-100 tracking-tight leading-none">{decodedTitle}</h1>
-              <p className="text-slate-400 text-lg mt-2 font-medium">Topic Headquarters • {liveMatches.length + deliberatingMatches.length} available matches</p>
+              <p className="text-slate-400 text-lg mt-2 font-medium">Topic Headquarters • {liveMatches.length + deliberatingMatches.length + completedMatches.length} matches found</p>
             </div>
           </div>
         </header>
@@ -239,15 +248,26 @@ const TopicMatches = ({ socket, user }) => {
                        </div>
                        <Activity className="h-4 w-4 text-red-500 animate-pulse mt-1" />
                     </div>
-                    <div className="mb-4">
+                    <div className="mb-4 relative">
                         <div className="text-sm font-semibold text-slate-300 flex items-center justify-between mb-2">
                            <span className="text-rose-400 truncate max-w-[40%]">{match.critic_name || 'Critic'}</span>
                            <span className="text-slate-500 text-[10px] uppercase font-black tracking-widest mx-2">VS</span>
                            <span className="text-cyan-400 truncate max-w-[40%] text-right">{match.defender_name || 'Defender'}</span>
                         </div>
-                        <p className="text-xs text-slate-400 line-clamp-2 italic">
-                            "{getDebateCrux(match)}"
-                        </p>
+                        <div className="relative group/desc">
+                          <p className="text-xs text-slate-400 line-clamp-2 italic">
+                              "{getDebateCrux(match)}"
+                          </p>
+                          {/* Floating Popover on Hover */}
+                          <div className="absolute bottom-full left-0 mb-3 w-[280px] opacity-0 invisible group-hover/desc:opacity-100 group-hover/desc:visible transition-all duration-300 z-[100] pointer-events-none translate-y-2 group-hover/desc:translate-y-0">
+                            <div className="bg-slate-950/90 backdrop-blur-xl border border-slate-700/50 rounded-2xl p-4 shadow-[0_20px_50px_rgba(0,0,0,0.5)] border-t-red-500/30">
+                              <p className="text-[11px] leading-relaxed text-slate-200 italic font-medium">
+                                "{getDebateCrux(match)}"
+                              </p>
+                            </div>
+                            <div className="ml-6 w-3 h-3 bg-slate-950 border-r border-b border-slate-700/50 rotate-45 -mt-1.5"></div>
+                          </div>
+                        </div>
                     </div>
                     <div className="mt-auto">
                       {user && (match.critic_id === user.id || match.defender_id === user.id) ? (
@@ -300,15 +320,26 @@ const TopicMatches = ({ socket, user }) => {
                        </div>
                        <Vote className="h-4 w-4 text-purple-500 mt-1" />
                     </div>
-                    <div className="mb-4">
+                    <div className="mb-4 relative">
                         <div className="text-sm font-semibold text-slate-300 flex items-center justify-between mb-2">
                            <span className="text-rose-400 truncate max-w-[40%]">{match.critic_name || 'Critic'}</span>
                            <span className="text-slate-500 text-[10px] uppercase font-black tracking-widest mx-2">VS</span>
                            <span className="text-cyan-400 truncate max-w-[40%] text-right">{match.defender_name || 'Defender'}</span>
                         </div>
-                        <p className="text-xs text-slate-400 line-clamp-2 italic">
-                            "{getDebateCrux(match)}"
-                        </p>
+                        <div className="relative group/desc">
+                          <p className="text-xs text-slate-400 line-clamp-2 italic">
+                              "{getDebateCrux(match)}"
+                          </p>
+                          {/* Floating Popover on Hover */}
+                          <div className="absolute bottom-full left-0 mb-3 w-[280px] opacity-0 invisible group-hover/desc:opacity-100 group-hover/desc:visible transition-all duration-300 z-[100] pointer-events-none translate-y-2 group-hover/desc:translate-y-0">
+                            <div className="bg-slate-950/90 backdrop-blur-xl border border-slate-700/50 rounded-2xl p-4 shadow-[0_20px_50px_rgba(0,0,0,0.5)] border-t-purple-500/30">
+                              <p className="text-[11px] leading-relaxed text-slate-200 italic font-medium">
+                                "{getDebateCrux(match)}"
+                              </p>
+                            </div>
+                            <div className="ml-6 w-3 h-3 bg-slate-950 border-r border-b border-slate-700/50 rotate-45 -mt-1.5"></div>
+                          </div>
+                        </div>
                     </div>
                     <div className="mt-auto">
                       <button 
@@ -324,16 +355,84 @@ const TopicMatches = ({ socket, user }) => {
             </section>
           )}
 
-          {matches.length === 0 && (
+          {completedMatches.length > 0 && (
+            <section>
+              <h2 className="text-xl font-bold text-slate-100 mb-6 flex items-center gap-3">
+                <Trophy className="h-5 w-5 text-emerald-500" />
+                RECENTLY RESOLVED
+              </h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                {completedMatches.map(match => (
+                  <div key={match.id} className="bg-[#0f172a]/80 backdrop-blur-md border border-emerald-500/20 rounded-2xl p-6 hover:border-emerald-500/40 transition-all hover:-translate-y-1 shadow-2xl flex flex-col h-[220px]">
+                    <div className="flex justify-between items-start mb-4">
+                       <div className="flex flex-col gap-2">
+                           <span className="text-xs font-black uppercase tracking-widest text-emerald-400 bg-emerald-400/10 px-2 py-1 rounded border border-emerald-400/20 w-fit">History</span>
+                           <span className="text-emerald-300/80 text-[10px] font-bold tracking-wide flex items-center gap-1">
+                               <Clock className="w-3 h-3" />
+                               {new Date(match.updated_at || match.created_at).toLocaleDateString()}
+                           </span>
+                       </div>
+                       <Trophy className="h-4 w-4 text-emerald-500 mt-1" />
+                    </div>
+                    <div className="mb-4 relative">
+                        <div className="text-sm font-semibold text-slate-300 flex items-center justify-between mb-2">
+                           <span className="text-rose-400 truncate max-w-[40%]">{match.critic_name || 'Critic'}</span>
+                           <span className="text-slate-500 text-[10px] uppercase font-black tracking-widest mx-2">VS</span>
+                           <span className="text-cyan-400 truncate max-w-[40%] text-right">{match.defender_name || 'Defender'}</span>
+                        </div>
+                        <div className="relative group/desc">
+                          <p className="text-xs text-slate-400 line-clamp-2 italic">
+                              "{getDebateCrux(match)}"
+                          </p>
+                          {/* Floating Popover on Hover */}
+                          <div className="absolute bottom-full left-0 mb-3 w-[280px] opacity-0 invisible group-hover/desc:opacity-100 group-hover/desc:visible transition-all duration-300 z-[100] pointer-events-none translate-y-2 group-hover/desc:translate-y-0">
+                            <div className="bg-slate-950/90 backdrop-blur-xl border border-slate-700/50 rounded-2xl p-4 shadow-[0_20px_50px_rgba(0,0,0,0.5)] border-t-emerald-500/30">
+                              <p className="text-[11px] leading-relaxed text-slate-200 italic font-medium">
+                                "{getDebateCrux(match)}"
+                              </p>
+                            </div>
+                            <div className="ml-6 w-3 h-3 bg-slate-950 border-r border-b border-slate-700/50 rotate-45 -mt-1.5"></div>
+                          </div>
+                        </div>
+                    </div>
+                    <div className="mt-auto">
+                      <button 
+                        onClick={() => navigate(`/review/${match.id}`)}
+                        className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-bold py-3 rounded-xl transition-all shadow-lg shadow-emerald-500/20 flex items-center justify-center gap-2"
+                      >
+                        View Report
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {liveMatches.length === 0 && deliberatingMatches.length === 0 && completedMatches.length === 0 && (
             <div className="flex flex-col items-center justify-center py-20 text-center">
               <div className="p-6 bg-slate-900 rounded-full border border-slate-800 mb-6">
                 <Layers className="h-12 w-12 text-slate-600" />
               </div>
-              <h3 className="text-2xl font-bold text-slate-400">All quiet in the {decodedTitle} arena.</h3>
-              <p className="text-slate-500 mt-2">No active debates. Why not start one yourself?</p>
+              <h3 className="text-2xl font-bold text-slate-400">
+                {activeFilter === 'completed' 
+                  ? `No resolved arenas found for ${decodedTitle}.`
+                  : activeFilter === 'pending_votes'
+                  ? `No voting sessions found for ${decodedTitle}.`
+                  : activeFilter === 'active'
+                  ? `No live debates found for ${decodedTitle}.`
+                  : `All quiet in the ${decodedTitle} arena.`
+                }
+              </h3>
+              <p className="text-slate-500 mt-2">
+                {activeFilter 
+                  ? `No matches match your current filter.`
+                  : "No active debates. Why not start one yourself?"
+                }
+              </p>
               <button 
                 onClick={handleStartNewDebate}
-                className="mt-6 text-cyan-400 hover:text-cyan-300 font-bold underline"
+                className="mt-6 text-cyan-400 hover:text-cyan-300 font-bold underline transition-colors"
               >
                 Start a New Debate
               </button>

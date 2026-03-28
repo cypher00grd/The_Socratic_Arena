@@ -1,6 +1,7 @@
 import { Users, Clock, Shield, Swords, ArrowRight, Shuffle, Sparkles, AlertCircle, X, Copy, CheckCircle2, Link2 } from 'lucide-react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, useMemo } from 'react';
+import { generateStances } from '../utils/stanceUtils';
 
 const Lobby = ({ socket, user }) => {
   const { topicId } = useParams();
@@ -26,13 +27,16 @@ const Lobby = ({ socket, user }) => {
   // Extract topic from route state (or fallback)
   const topic = location.state?.topic || { id: topicId, title: 'Unknown Topic' };
 
+  // Calculate dynamic stances
+  const stances = useMemo(() => generateStances(topic.title), [topic.title]);
+
   useEffect(() => {
     if (!socket) return;
 
     // --- Normal matchmaking listeners ---
     const handleMatchFound = (data) => {
       const assignedRole = data.roles ? data.roles[socket.id] : null;
-      navigate(`/arena/${data.roomId}`, { state: { ...data, assignedRole } });
+      navigate(`/arena/${data.roomId}`, { state: { ...data, assignedRole, stances } });
     };
 
     const handleWaiting = () => {
@@ -160,30 +164,30 @@ const Lobby = ({ socket, user }) => {
     return id.split('-')[0] + '...';
   };
 
-  const roles = [
-    {
-      id: 'Critic',
-      name: 'Criticize',
-      icon: Swords,
-      desc: 'Attack the idea with logic',
-      color: 'from-rose-500 to-red-600',
-      shadow: 'shadow-red-500/20',
-      border: 'border-red-500/30'
-    },
+  const displayRoles = [
     {
       id: 'Defender',
-      name: 'Defend',
+      name: stances.stanceA,
       icon: Shield,
-      desc: 'Protect and uphold the stance',
+      desc: stances.descA,
       color: 'from-cyan-500 to-blue-600',
       shadow: 'shadow-cyan-500/20',
       border: 'border-cyan-500/30'
     },
     {
+      id: 'Critic',
+      name: stances.stanceB,
+      icon: Swords,
+      desc: stances.descB,
+      color: 'from-rose-500 to-red-600',
+      shadow: 'shadow-red-500/20',
+      border: 'border-red-500/30'
+    },
+    {
       id: 'Random',
-      name: 'Random',
+      name: 'Random Duty',
       icon: Shuffle,
-      desc: 'Let fate decide your duty',
+      desc: 'Let fate decide your mission',
       color: 'from-slate-600 to-slate-700',
       shadow: 'shadow-slate-500/20',
       border: 'border-slate-500/30'
@@ -275,7 +279,7 @@ const Lobby = ({ socket, user }) => {
           {!isMatchmaking ? (
             <div className="w-full space-y-8">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-                {roles.map((role) => (
+                {displayRoles.map((role) => (
                   <button
                     key={role.id}
                     onClick={() => setSelectedRole(role.id)}

@@ -1001,7 +1001,7 @@ io.on('connection', (socket) => {
   /**
    * Turn Submission
    */
-  socket.on('submit_turn', ({ roomId, message }) => {
+  socket.on('submit_turn', ({ roomId, message, tone }) => {
     const room = activeRooms[roomId];
     if (!room || room.status !== 'active') {
       socket.emit('error', { message: 'Invalid room or match not active' });
@@ -1015,14 +1015,15 @@ io.on('connection', (socket) => {
       return;
     }
 
-    // Add message to transcript
+    // Add message to transcript (including Affective Tone)
     room.transcript.push({
       id: Date.now() + Math.random().toString(36).substring(7),
       speaker: playerRole,
       text: message,
+      tone: tone || 'neutral',
       timestamp: new Date().toISOString()
     });
-    console.log(`[submit_turn] ${playerRole} submitted message. Transcript length: ${room.transcript.length}`);
+    console.log(`[submit_turn] ${playerRole} submitted message [Tone: ${tone || 'neutral'}]. Transcript length: ${room.transcript.length}`);
 
     // Swap active speaker (chess clock — timers are never reset)
     room.activeSpeaker = room.activeSpeaker === 'Critic' ? 'Defender' : 'Critic';

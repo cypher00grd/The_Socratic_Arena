@@ -502,16 +502,17 @@ const Explore = ({ socket, user }) => {
     navigate(`/lobby/${topic.id}`, { state: { topic } });
   };
 
-  const handleTopicClick = (topicTitle) => {
-    navigate(`/topic/${encodeURIComponent(topicTitle)}`);
+  const handleTopicClick = (topicTitle, filterStatus = null) => {
+    const queryParam = filterStatus ? `?status=${filterStatus}` : '';
+    navigate(`/topic/${encodeURIComponent(topicTitle)}${queryParam}`, { state: { filterStatus } });
   };
 
   const groupMatches = (matches) => {
     const groups = {};
     matches
-      .filter(m => m.topic_title && m.topic_title.toLowerCase() !== 'custom debate')
+      .filter(m => (m.topic_title || m.topic) && (m.topic_title || m.topic).toLowerCase() !== 'custom debate')
       .forEach(m => {
-        const title = m.topic_title;
+        const title = m.topic_title || m.topic;
         if (!groups[title]) groups[title] = [];
         groups[title].push(m);
       });
@@ -560,7 +561,7 @@ const Explore = ({ socket, user }) => {
                   return (
                     <div 
                       key={`stack-live-${title}`}
-                      onClick={() => handleTopicClick(title)}
+                      onClick={() => handleTopicClick(title, 'active')}
                       className="group cursor-pointer relative bg-red-950/10 border border-red-500/20 rounded-xl p-6 flex flex-col h-full hover:border-red-500/40 transition-all hover:shadow-[0_0_20px_rgba(239,68,68,0.1)] active:scale-[0.98]"
                     >
                       <div className="absolute top-2 right-2 bg-red-600 text-white text-[10px] font-black px-2 py-0.5 rounded-full z-20 animate-pulse">
@@ -719,7 +720,7 @@ const Explore = ({ socket, user }) => {
                 return (
                   <div 
                     key={`stack-delib-${title}`}
-                    onClick={() => handleTopicClick(title)}
+                    onClick={() => handleTopicClick(title, 'pending_votes')}
                     className="group cursor-pointer relative bg-purple-950/10 border border-purple-500/20 rounded-xl p-6 flex flex-col h-full hover:border-purple-500/40 transition-all hover:shadow-[0_0_20px_rgba(168,85,247,0.1)] active:scale-[0.98]"
                   >
                     <div className="absolute top-2 right-2 bg-purple-600 text-white text-[10px] font-black px-2 py-0.5 rounded-full z-20 animate-pulse">
@@ -1027,35 +1028,72 @@ const Explore = ({ socket, user }) => {
               </div>
             )}
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-              {completedMatches
-                .filter(m => !completedSearchQuery || (m.topic_title || m.topic || '').toLowerCase().includes(completedSearchQuery.toLowerCase()))
-                .map((match) => (
-                <div 
-                  key={match.id} 
-                  onClick={() => navigate(`/review/${match.id}`)}
-                  className="group cursor-pointer relative bg-[#0b0f19]/80 backdrop-blur-sm border border-emerald-900/30 rounded-xl p-6 flex flex-col h-full hover:border-emerald-500/40 transition-all duration-300 hover:shadow-[0_0_20px_rgba(16,185,129,0.05)] active:scale-[0.98]"
-                >
-                  <div className="flex justify-between items-start mb-4 gap-4">
-                    <h3 className="text-lg font-bold text-slate-200 line-clamp-2 flex-1">
-                      {match.topic_title || match.topic || 'Custom Debate'}
-                    </h3>
-                    <span className={`shrink-0 text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border ${getTopicDomain(match.topic_title || match.topic).color}`}>
-                      {getTopicDomain(match.topic_title || match.topic).domain}
-                    </span>
-                  </div>
-                  
-                  <div className="mt-auto flex items-center justify-between text-slate-400 border-t border-slate-800/50 pt-4">
-                    <span className="text-[10px] font-black tracking-wider bg-emerald-950/30 text-emerald-400/80 px-2 py-1 rounded-md border border-emerald-900/20">
-                      RESOLVED • {new Date(match.updated_at || match.created_at).toLocaleDateString()}
-                    </span>
-                    <div className="flex items-center gap-1 group-hover:text-emerald-400 transition-colors">
-                      <span className="text-xs font-bold uppercase">View Report</span>
-                      <ChevronDown className="h-4 w-4 -rotate-90" />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-4">
+              {Object.entries(groupMatches(completedMatches.filter(m => !completedSearchQuery || (m.topic_title || m.topic || '').toLowerCase().includes(completedSearchQuery.toLowerCase()))))
+                .map(([title, matches]) => (
+                  <div 
+                    key={`stack-comp-${title}`}
+                    onClick={() => handleTopicClick(title, 'completed')}
+                    className="group cursor-pointer relative bg-emerald-950/10 border border-emerald-500/20 rounded-xl p-6 flex flex-col h-full hover:border-emerald-500/40 transition-all hover:shadow-[0_0_20px_rgba(16,185,129,0.1)] active:scale-[0.98]"
+                  >
+                    <div className="absolute top-2 right-2 bg-emerald-600 text-white text-[10px] font-black px-2 py-0.5 rounded-full z-20 animate-pulse">
+                      RESOLVED STACK
+                    </div>
+                    
+                    {/* Visual Stack Effect */}
+                    <div className="absolute inset-0 bg-emerald-500/5 rounded-xl translate-x-2 translate-y-2 -z-10 border border-emerald-500/10"></div>
+                    <div className="absolute inset-0 bg-emerald-500/5 rounded-xl translate-x-4 translate-y-4 -z-20 border border-emerald-500/10"></div>
+                    
+                    <div className="flex items-center gap-3 mb-2">
+                      <Layers className="h-6 w-6 text-emerald-400" />
+                      <h3 className="text-xl font-bold text-slate-100 line-clamp-2 flex-1">{title}</h3>
+                      <span className={`shrink-0 text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border ${getTopicDomain(title).color}`}>
+                        {getTopicDomain(title).domain}
+                      </span>
+                    </div>
+                    
+                    <div className="mt-auto flex items-center justify-between">
+                      <span className="text-emerald-400 font-bold text-sm tracking-tighter">
+                        {matches.length} {matches.length === 1 ? 'COMPLETED ARENA' : 'COMPLETED ARENAS'}
+                      </span>
+                      <div className="flex items-center gap-1 text-slate-400 group-hover:text-emerald-300 transition-colors">
+                        <span className="text-xs font-bold uppercase mr-2">View History</span>
+                        
+                        {/* Side-by-side icons in Completed stack cards */}
+                        {(() => {
+                           const domain = getTopicDomain(title).domain;
+                           const categoryTopic = topics.find(t => t.title.toLowerCase() === domain.toLowerCase());
+                           const specificTopic = topics.find(t => t.title.toLowerCase() === title.toLowerCase());
+                           const isCatFollowed = categoryTopic ? followedIds.includes(categoryTopic.id) : false;
+                           const isTopicFollowed = specificTopic ? followedIds.includes(specificTopic.id) : false;
+
+                           return (
+                            <div className="flex items-center gap-2 mr-2">
+                               <button
+                                 disabled={togglingIds.has(specificTopic?.id)}
+                                 onClick={(e) => { e.stopPropagation(); if (specificTopic) toggleFollow(specificTopic.id); }}
+                                 className={`p-1 rounded-md border transition-all ${isTopicFollowed ? 'bg-indigo-500/20 border-indigo-500/40 text-indigo-400' : 'bg-slate-800 border-slate-700 text-slate-500'} ${togglingIds.has(specificTopic?.id) ? 'opacity-50 keep-cursor' : ''}`}
+                                 title="Save Topic"
+                               >
+                                 <Target className={`h-3 w-3 ${togglingIds.has(specificTopic?.id) ? 'animate-pulse' : ''}`} />
+                               </button>
+                               <button
+                                 disabled={togglingIds.has(categoryTopic?.id)}
+                                 onClick={(e) => { e.stopPropagation(); if (categoryTopic) toggleFollow(categoryTopic.id); }}
+                                 className={`p-1 rounded-md border transition-all ${isCatFollowed ? 'bg-amber-500/20 border-amber-500/40 text-amber-400' : 'bg-slate-800 border-slate-700 text-slate-500'} ${togglingIds.has(categoryTopic?.id) ? 'opacity-50 keep-cursor' : ''}`}
+                                 title={`Follow ${domain}`}
+                               >
+                                 {isCatFollowed ? <BookmarkCheck className={`h-3 w-3 ${togglingIds.has(categoryTopic?.id) ? 'animate-pulse' : ''}`} /> : <Bookmark className={`h-3 w-3 ${togglingIds.has(categoryTopic?.id) ? 'animate-pulse' : ''}`} />}
+                               </button>
+                             </div>
+                           );
+                        })()}
+
+                        <ChevronDown className="h-4 w-4" />
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
+                ))}
             </div>
           </div>
         )}

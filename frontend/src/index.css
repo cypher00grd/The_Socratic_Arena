@@ -63,3 +63,51 @@ button.keep-cursor:disabled {
   scrollbar-width: thin;
   scrollbar-color: #1e293b transparent;
 }
+
+/* ── Mission Ribbon Animations ── */
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-20px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* ── Affective Tone Auras ── */
+:root {
+  --aura-urgent: #f43f5e;     /* rose-500 */
+  --aura-inquisitive: #6366f1; /* indigo-500 */
+  --aura-hesitant: #94a3b8;    /* slate-400 */
+}
+
+/* Urgent: High-intensity, rose-tinted, pulsing */
+.tone-urgent {
+  position: relative;
+  z-index: 10;
+  border-color: rgba(244, 63, 94, 0.6) !important;
+  box-shadow: 0 0 20px rgba(244, 63, 94, 0.3), inset 0 0 12px rgba(244, 63, 94, 0.1) !important;
+  animation: urgentPulse 1.5s infinite ease-in-out;
+}
+
+@keyframes urgentPulse {
+  0%, 100% { box-shadow: 0 0 20px rgba(244, 63, 94, 0.3); transform: scale(1); }
+  50% { box-shadow: 0 0 35px rgba(244, 63, 94, 0.6); transform: scale(1.01); }
+}
+
+/* Inquisitive: Strong Indigo/Cyan glow */
+.tone-inquisitive {
+  border-color: rgba(99, 102, 241, 0.6) !important;
+  box-shadow: 0 0 20px rgba(99, 102, 241, 0.3), inset 0 0 12px rgba(99, 102, 241, 0.1) !important;
+}
+
+/* Hesitant: Visible desaturation and dashed border */
+.tone-hesitant {
+  opacity: 0.75;
+  border-style: dashed !important;
+  border-width: 2px !important;
+  border-color: rgba(148, 163, 184, 0.5) !important;
+  box-shadow: none !important;
+}
