@@ -109,17 +109,26 @@ Unlike social media flame wars, The Socratic Arena rewards *thinking* — not sh
 ## ✨ Features
 
 ### 🎯 Core Debate Engine
-- **Real-time 1v1 debates** via WebSocket with server-authoritative turn management
-- **Critic vs. Defender** role assignment (choose or randomize)
-- **5-minute countdown timer** per debater with automatic match resolution
-- **Typewriter message effect** for a live, immersive feel
-- **Private Arena codes** — invite a specific opponent with a shareable code (e.g., `1AB6-X9K2`)
+- **Real-time 1v1 debates** via WebSocket with server-authoritative turn management.
+- **Dynamic Stance Mapping** — Automatically parses debate topics (e.g., "Veg vs Non-Veg") to generate tailored, context-aware mission objectives for each role.
+- **Mission Briefing Ribbon** — A glassmorphic, top-pinned UI component with `slideDown` animations that keeps your specific debate objective always in focus.
+- **Critic vs. Defender** roles — Internally mapped to dynamic stances to ensure database compatibility while providing clear, human-readable instructions.
+- **5-minute countdown timer** per debater with automatic match resolution.
+- **Typewriter message effect** for a live, immersive feel.
+- **Private Arena codes** — Invite a specific opponent with a shareable code (e.g., `1AB6-X9K2`).
+
+### 🎙️ Pragmatic Affective Engine (v2)
+- **Acoustic-Semantic Lock** — High-fidelity audio analysis that distinguishes between dictation and commands with precise temporal and semantic gates.
+- **Affective Punctuation** — Automatically appends `?`, `!`, or `...` based on vocal energy peaks (RMS), interrogation patterns, and pauses (Delta-T).
+- **Tone-Aware Visual Auras** — Messages are rendered with vibrant, pulsing glows (Rose for Urgent, Indigo for Inquisitive) synced in real-time across all clients.
+- **Text-Voice Parity** — A lightweight semantic scanner ensures that manually typed messages (e.g., "This is ridiculous!!!") receive the same visual "Aura" and metadata as voice messages.
+- **Hardware-Level Fidelity** — Explicit `autoGainControl` management to preserve natural vocal intensity for emotion detection.
 
 ### 🤖 AI-Powered Intelligence
-- **Gemini 2.5 Flash** evaluates every debate on three axes: Logic, Facts, and Relevance (1–10 scale)
-- **AI Topic Categorization** — new topics are automatically classified into 12 domains using Gemini
-- **AI Bouncer** — validates and deduplicates new topics using semantic analysis via LangChain
-- **AI-powered semantic search** — find debates by meaning, not just keywords
+- **Gemini 2.5 Flash** evaluates every debate on three axes: Logic, Facts, and Relevance (1–10 scale).
+- **AI Topic Categorization** — New topics are automatically classified into 12 domains using Gemini-powered domain analysis.
+- **AI Bouncer** — Validates and deduplicates new topics using semantic similarity analysis.
+- **AI-powered semantic search** — Find debates by conceptual meaning rather than just keyword matches.
 
 ### 📊 Competitive Ranking
 - **Elo rating system** with dynamic K-factor (50 for new players, 30 standard, 15 for elite)
@@ -334,12 +343,13 @@ cd frontend && npm install && npm run dev
 - [x] Match replay with timed playback
 - [x] Cognitive Profile radar charts
 - [x] Social network (follow users, see live status)
+- [ ] AI Judge Lifeline — Summon the AI to fact-check mid-debate (Objection System)
+- [x] Pragmatic Affective Engine v2 — Tone detection, auto-punctuation, and visual auras
+- [x] Dynamic Stance Mapping — tailored objectives for comparitive topics
 - [ ] AI Highlights — Automatically generate and extract key turning points from debates
-- [ ] PDF or txt Export — Download professional-grade debate transcripts in PDF or txt format
-- [ ] AI Judge Lifeline — summon the AI to fact-check mid-debate
+- [ ] PDF & Text Export — Download professional-grade debate transcripts
 - [ ] Tournament brackets with elimination rounds
 - [ ] Team debates (2v2)
-- [ ] Voice/video debate mode
 - [ ] Mobile-native app (React Native)
 - [ ] Public API for third-party integrations
 
