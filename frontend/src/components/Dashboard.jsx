@@ -296,7 +296,7 @@ const Dashboard = ({ user }) => {
           <header>
             <h1 className="text-3xl font-bold text-slate-100 flex items-center gap-3">
               <Shield className="h-8 w-8 text-indigo-400" />
-              Debater Profile
+              Debater Profile <span className="text-[10px] text-slate-600 font-mono align-top ml-2 opacity-50">DEPLOY_VERIFIED_777</span>
             </h1>
             <p className="text-slate-400 mt-1 text-sm">Welcome back to The Socratic Arena.</p>
           </header>
