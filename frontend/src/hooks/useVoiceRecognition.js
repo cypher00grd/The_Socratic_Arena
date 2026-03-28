@@ -415,14 +415,21 @@ export default function useVoiceRecognition({
   }, [sampleCurrentEnergy]);
 
   // ── Stable callback refs (prevent stale closures in event listeners) ──
+  const onSubmitRef = useRef(onSubmit);
+  const onClearRef = useRef(onClear);
+  const onObjectionRef = useRef(onObjection);
+  const onTranscriptChunkRef = useRef(onTranscriptChunk);
+
   useEffect(() => { onSubmitRef.current = onSubmit; }, [onSubmit]);
   useEffect(() => { onClearRef.current = onClear; }, [onClear]);
   useEffect(() => { onObjectionRef.current = onObjection; }, [onObjection]);
-  useEffect(() => { onTranscriptChunkRef.current = (data) => {
-    // Trigger "Linguistic Pulse" to ensure Orb moves even if raw audio is blocked by OS
-    linguisticPulseRef.current = 0.4 + Math.random() * 0.3;
-    onTranscriptChunk(data);
-  }; }, [onTranscriptChunk]);
+  useEffect(() => { 
+    onTranscriptChunkRef.current = (data) => {
+      // Trigger "Linguistic Pulse" to ensure Orb moves even if raw audio is blocked by OS
+      linguisticPulseRef.current = 0.4 + Math.random() * 0.3;
+      onTranscriptChunk(data);
+    }; 
+  }, [onTranscriptChunk]);
 
   useEffect(() => { isListeningRef.current = isListening; }, [isListening]);
 
