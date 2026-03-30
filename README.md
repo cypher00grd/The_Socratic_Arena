@@ -117,6 +117,21 @@ Unlike social media flame wars, The Socratic Arena rewards *thinking* — not sh
 - **Typewriter message effect** for a live, immersive feel.
 - **Private Arena codes** — Invite a specific opponent with a shareable code (e.g., `1AB6-X9K2`).
 
+### ⚔️ Real-Time Challenge System
+- **Direct Invitations** — Send live P2P "Debate Challenges" to online users straight from their profile.
+- **Interactive Notification Bell** — Accept or decline incoming challenges in real time.
+- **Auto-Lobby Routing** — Seamlessly transports both players into a private arena upon challenge acceptance.
+
+### 📱 Progressive Web App (PWA)
+- **Installable Desktop/Mobile App** — Add to homescreen for a standalone, immersive experience.
+- **In-App 'Update Available' UI** — Background service worker integration cleanly prompts for new updates via the Notification Bell.
+- **Offline Resilience** — Employs custom toasts to gracefully warn users of lost network connections.
+
+### 📱 Mobile-First Design
+- **Fully Responsive UI** — The entire complex interface, from the Live Arena typewriter to radar charts, is intricately optimized for mobile dimensions.
+- **Touch Navigation** — Streamlined bottom sheets and modal dialogs designed for touch interactions.
+- **Abandoned Match Handling** — Live Arenas instantly detects and cleans up abandoned matches, ensuring precise stat tracking.
+
 ### 🎙️ Pragmatic Affective Engine (v2)
 - **Acoustic-Semantic Lock** — High-fidelity audio analysis that distinguishes between dictation and commands with precise temporal and semantic gates.
 - **Affective Punctuation** — Automatically appends `?`, `!`, or `...` based on vocal energy peaks (RMS), interrogation patterns, and pauses (Delta-T).
@@ -343,6 +358,10 @@ cd frontend && npm install && npm run dev
 - [x] Match replay with timed playback
 - [x] Cognitive Profile radar charts
 - [x] Social network (follow users, see live status)
+- [x] Real-time P2P Challenge System with interactive notifications
+- [x] Progressive Web App (PWA) integration and offline support
+- [x] Fully responsive mobile-first UI optimization
+- [x] Abandoned Match UI cleanup and precise stat tracking
 - [ ] AI Judge Lifeline — Summon the AI to fact-check mid-debate (Objection System)
 - [x] Pragmatic Affective Engine v2 — Tone detection, auto-punctuation, and visual auras
 - [x] Dynamic Stance Mapping — tailored objectives for comparitive topics
