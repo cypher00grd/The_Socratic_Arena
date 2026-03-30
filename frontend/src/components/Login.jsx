@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
 import { Swords, User, Mail, Lock, Eye, EyeOff, KeyRound, MailCheck, ArrowLeft, ShieldCheck, Loader2, RefreshCw } from 'lucide-react';
 
-const Login = () => {
+const Login = ({ initialView, onResetComplete }) => {
   const navigate = useNavigate();
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
@@ -14,7 +14,7 @@ const Login = () => {
   const [showPassword, setShowPassword] = useState(false);
 
   // --- Forgot Password State ---
-  const [view, setView] = useState('auth'); // 'auth' | 'forgot' | 'inbox' | 'reset'
+  const [view, setView] = useState(initialView || 'auth'); // 'auth' | 'forgot' | 'inbox' | 'reset'
   const [resetEmail, setResetEmail] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -25,7 +25,7 @@ const Login = () => {
   const [resendCooldown, setResendCooldown] = useState(0);
   const cooldownRef = useRef(null);
 
-  // --- Listen for PASSWORD_RECOVERY event from Supabase ---
+  // --- Listen for PASSWORD_RECOVERY event from Supabase (fallback for unmounted scenarios) ---
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
       if (event === 'PASSWORD_RECOVERY') {
@@ -140,6 +140,7 @@ const Login = () => {
         setResetSuccess('');
         setNewPassword('');
         setConfirmPassword('');
+        if (onResetComplete) onResetComplete(); // Clear recovery flag in App.jsx
         navigate('/dashboard');
       }, 1500);
     } catch (err) {

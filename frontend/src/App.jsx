@@ -43,6 +43,8 @@ const App = () => {
   const [joinStatus, setJoinStatus] = useState('idle');
   const [joinFeedback, setJoinFeedback] = useState('');
 
+  const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
+
   useEffect(() => {
     // Auth Resilience: Retry with Exponential Backoff (500ms, 1s, 2s)
     const fetchSession = async (retryCount = 0) => {
@@ -68,7 +70,15 @@ const App = () => {
 
     fetchSession();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      // CRITICAL: Detect password recovery BEFORE setting session
+      // This prevents auto-redirect to Dashboard when user clicks the reset link in email
+      if (event === 'PASSWORD_RECOVERY') {
+        setIsPasswordRecovery(true);
+        setSession(session); // Still set session so Supabase auth context is valid for updateUser
+        return; // Don't connect socket or do anything else
+      }
+
       setSession(session);
       if (session) {
         if (socket.auth?.token !== session.access_token) {
@@ -136,7 +146,11 @@ const App = () => {
           {/* Public / Entry Route */}
           <Route
             path="/"
-            element={session ? <Navigate to="/dashboard" replace /> : <Login />}
+            element={
+              isPasswordRecovery
+                ? <Login initialView="reset" onResetComplete={() => { setIsPasswordRecovery(false); }} />
+                : session ? <Navigate to="/dashboard" replace /> : <Login />
+            }
           />
 
           {/* Authenticated Routes — Wrapped in ErrorBoundaries for Chunk Load Failure recovery */}
