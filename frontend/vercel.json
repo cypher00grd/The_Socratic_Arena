@@ -1,6 +1,14 @@
 {
   "rewrites": [
     {
+      "source": "/socket.io/(.*)",
+      "destination": "https://the-socratic-arena.onrender.com/socket.io/$1"
+    },
+    {
+      "source": "/api/(.*)",
+      "destination": "https://the-socratic-arena.onrender.com/api/$1"
+    },
+    {
       "source": "/(.*)",
       "destination": "/index.html"
     }

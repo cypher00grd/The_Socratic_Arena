@@ -20,7 +20,8 @@ const MatchReview = lazy(() => import('./components/MatchReview'));
 const TopicMatches = lazy(() => import('./components/TopicMatches'));
 
 // Singleton Socket (Auto-connect disabled until token is ready)
-const socket = io(import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000', {
+// We connect to '/' (Edge Proxy) instead of the Render URL to bypass institutional LAN firewalls
+const socket = io('/', {
   transports: ['polling', 'websocket'], // Prioritize polling for compatibility with institutional LANs
   autoConnect: false,
   reconnectionAttempts: 5,
@@ -45,17 +46,14 @@ const App = () => {
   const [joinFeedback, setJoinFeedback] = useState('');
 
   useEffect(() => {
-    // Auth Resilience: Retry logic for initial session fetch with Exponential Backoff + Connection Check
+    // Auth Resilience: Retry logic for initial session fetch with Exponential Backoff + Async Connection Check
     const fetchSession = async (retryCount = 0) => {
       try {
-        // Pre-check: Is the database even reachable on this LAN?
+        // Pre-check: Run firewall test non-blocking (so it doesn't freeze the App Shell load)
         if (retryCount === 0) {
-          const isReachable = await checkSupabaseConnection();
-          if (!isReachable) {
-            setIsDatabaseBlocked(true);
-            setIsAuthLoading(false);
-            return;
-          }
+          checkSupabaseConnection().then(isReachable => {
+            if (!isReachable) setIsDatabaseBlocked(true);
+          });
         }
 
         const { data: { session } } = await supabase.auth.getSession();
@@ -63,7 +61,10 @@ const App = () => {
         setIsAuthLoading(false);
         if (session) {
           socket.auth = { token: session.access_token };
-          socket.connect();
+          // Lazy-load the heavy Socket connection to prioritize painting the UI first
+          setTimeout(() => {
+            if (!socket.connected) socket.connect();
+          }, 2500);
         }
       } catch (err) {
         if (retryCount < 3) {
@@ -102,7 +103,10 @@ const App = () => {
           if (socket.connected) {
             socket.disconnect().connect();
           } else {
-            socket.connect();
+            // Lazy-load reconnection
+            setTimeout(() => {
+              if (!socket.connected) socket.connect();
+            }, 1000);
           }
         }
       } else {
