@@ -261,7 +261,7 @@ const NotificationBell = ({ socket, user }) => {
 
         {/* Dropdown Panel */}
         {isOpen && (
-          <div className="absolute right-0 top-full mt-2 w-[340px] sm:w-[380px] max-h-[420px] overflow-hidden bg-slate-900 border border-slate-700/60 rounded-2xl shadow-2xl z-50 flex flex-col animate-in slide-in-from-top-2 fade-in duration-200">
+          <div className="fixed sm:absolute right-2 sm:right-0 left-2 sm:left-auto top-16 sm:top-full sm:mt-2 sm:w-[380px] max-h-[420px] overflow-hidden bg-slate-900 border border-slate-700/60 rounded-2xl shadow-2xl z-50 flex flex-col animate-in slide-in-from-top-2 fade-in duration-200">
             {/* Header */}
             <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between shrink-0">
               <h3 className="font-bold text-slate-100 text-sm flex items-center gap-2">
