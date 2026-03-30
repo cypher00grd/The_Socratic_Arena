@@ -9,6 +9,7 @@ import Login from './components/Login';
 import Dashboard from './components/Dashboard';
 import ErrorBoundary from './components/ErrorBoundary';
 import ReloadPrompt from './components/ReloadPrompt';
+import OfflineToast from './components/OfflineToast';
 
 // Heavy sub-pages (Lazy load to reduce initial bundle size)
 const Explore = lazy(() => import('./components/Explore'));
@@ -174,6 +175,7 @@ const App = () => {
       </Suspense>
 
       <ReloadPrompt />
+      <OfflineToast />
     </div>
   );
 };

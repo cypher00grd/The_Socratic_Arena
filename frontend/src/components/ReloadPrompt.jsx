@@ -1,9 +1,8 @@
 import { useRegisterSW } from 'virtual:pwa-register/react';
-import { RefreshCw, X, Download } from 'lucide-react';
+import { RefreshCw, X } from 'lucide-react';
 
 const ReloadPrompt = () => {
   const {
-    offlineReady: [offlineReady, setOfflineReady],
     needRefresh: [needRefresh, setNeedRefresh],
     updateServiceWorker,
   } = useRegisterSW({
@@ -16,11 +15,10 @@ const ReloadPrompt = () => {
   });
 
   const close = () => {
-    setOfflineReady(false);
     setNeedRefresh(false);
   };
 
-  if (!offlineReady && !needRefresh) return null;
+  if (!needRefresh) return null;
 
   return (
     <div className="fixed bottom-6 right-6 z-[100] flex flex-col gap-3 animate-in slide-in-from-bottom-10 duration-500">
