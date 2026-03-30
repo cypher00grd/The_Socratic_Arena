@@ -1,47 +1,37 @@
-import { useEffect, useState } from 'react';
-import { useRegisterSW } from 'virtual:pwa-register/react';
+import { useEffect, useState, useRef } from 'react';
 import { Zap } from 'lucide-react';
 
-const OfflineToast = () => {
+const OfflineToast = ({ session }) => {
   const [isVisible, setIsVisible] = useState(false);
   const [isFading, setIsFading] = useState(false);
-
-  const {
-    offlineReady: [offlineReady, setOfflineReady],
-  } = useRegisterSW();
+  const lastSessionId = useRef(null);
 
   useEffect(() => {
-    if (offlineReady) {
-      // THE LOCK: Ensure the user only ever sees this once
-      const hasSeenToast = localStorage.getItem('hasSeenOfflineToast');
-
-      if (hasSeenToast) {
-        setOfflineReady(false);
-        setIsVisible(false);
-        return;
-      }
-
-      // THE EXECUTION: Mark as seen and show the UI
-      localStorage.setItem('hasSeenOfflineToast', 'true');
+    // TRIGGER: Only fire when the session is newly established/changed
+    if (session?.user?.id && session.user.id !== lastSessionId.current) {
+      lastSessionId.current = session.user.id;
+      
       setIsVisible(true);
       setIsFading(false);
 
       // THE MAGICAL LIFECYCLE TIMERS
-      // Start fade out at 4.2s to leave 800ms for the exit animation
       const exitTimer = setTimeout(() => setIsFading(true), 4200);
       const unmountTimer = setTimeout(() => {
         setIsVisible(false);
-        setOfflineReady(false);
       }, 5000);
 
       return () => {
         clearTimeout(exitTimer);
         clearTimeout(unmountTimer);
       };
+    } else if (!session) {
+      // RESET: Allow it to fire again if the user logs out and back in
+      lastSessionId.current = null;
+      setIsVisible(false);
     }
-  }, [offlineReady, setOfflineReady]);
+  }, [session, isVisible]);
 
-  if (!isVisible || !offlineReady) return null;
+  if (!isVisible) return null;
 
   return (
     <div 

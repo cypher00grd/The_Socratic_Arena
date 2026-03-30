@@ -175,7 +175,7 @@ const App = () => {
       </Suspense>
 
       <ReloadPrompt />
-      <OfflineToast />
+      <OfflineToast session={session} />
     </div>
   );
 };
