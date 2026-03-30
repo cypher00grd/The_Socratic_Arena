@@ -1,8 +1,7 @@
 import { useEffect, useState, lazy, Suspense } from 'react';
 import { Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import { io } from 'socket.io-client';
-import { supabase, checkSupabaseConnection } from './lib/supabaseClient';
-import { AlertTriangle, WifiOff, RefreshCw } from 'lucide-react';
+import { supabase } from './lib/supabaseClient';
 
 // Core layout & critical pages (Keep static for instant first paint)
 import Navbar from './components/Navbar';
@@ -20,19 +19,17 @@ const MatchReview = lazy(() => import('./components/MatchReview'));
 const TopicMatches = lazy(() => import('./components/TopicMatches'));
 
 // Singleton Socket (Auto-connect disabled until token is ready)
-// We connect to '/' (Edge Proxy) instead of the Render URL to bypass institutional LAN firewalls
-const socket = io('/', {
-  transports: ['polling', 'websocket'], // Prioritize polling for compatibility with institutional LANs
+const socket = io(import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000', {
+  transports: ['polling', 'websocket'], // Polling first for LAN compatibility
   autoConnect: false,
-  reconnectionAttempts: 5,
-  reconnectionDelay: 2000,
+  reconnectionAttempts: 10,
+  reconnectionDelay: 3000,
+  timeout: 20000, // Extended timeout for slow LANs
 });
 
 const App = () => {
   const [session, setSession] = useState(null);
   const [isAuthLoading, setIsAuthLoading] = useState(true);
-  const [isDatabaseBlocked, setIsDatabaseBlocked] = useState(false);
-  const [socketStatus, setSocketStatus] = useState('connecting'); // 'connecting', 'connected', 'restricted'
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [createTopic, setCreateTopic] = useState('');
   const [createQuestion, setCreateQuestion] = useState('');
@@ -46,67 +43,39 @@ const App = () => {
   const [joinFeedback, setJoinFeedback] = useState('');
 
   useEffect(() => {
-    // Auth Resilience: Retry logic for initial session fetch with Exponential Backoff + Async Connection Check
+    // Auth Resilience: Retry with Exponential Backoff (500ms, 1s, 2s)
     const fetchSession = async (retryCount = 0) => {
       try {
-        // Pre-check: Run firewall test non-blocking (so it doesn't freeze the App Shell load)
-        if (retryCount === 0) {
-          checkSupabaseConnection().then(isReachable => {
-            if (!isReachable) setIsDatabaseBlocked(true);
-          });
-        }
-
         const { data: { session } } = await supabase.auth.getSession();
         setSession(session);
         setIsAuthLoading(false);
         if (session) {
           socket.auth = { token: session.access_token };
-          // Lazy-load the heavy Socket connection to prioritize painting the UI first
-          setTimeout(() => {
-            if (!socket.connected) socket.connect();
-          }, 2500);
+          socket.connect();
         }
       } catch (err) {
         if (retryCount < 3) {
-          const backoff = Math.pow(2, retryCount) * 500; // 500ms, 1000ms, 2000ms
-          console.warn(`[Auth] Session fetch failed, retrying in ${backoff}ms...`);
+          const backoff = Math.pow(2, retryCount) * 500;
+          console.warn(`[Auth] Retry ${retryCount + 1}/3 in ${backoff}ms...`);
           setTimeout(() => fetchSession(retryCount + 1), backoff);
         } else {
           setIsAuthLoading(false);
-          console.error('[Auth] Failed to fetch session after retries:', err);
+          console.error('[Auth] Session fetch failed after retries:', err);
         }
       }
     };
 
     fetchSession();
 
-    // Socket Connection Monitoring (for LAN survival feedback)
-    socket.on('connect', () => setSocketStatus('connected'));
-    socket.on('connect_error', () => {
-      if (socket.io.opts.transports.includes('websocket')) {
-        console.warn('[Socket] WebSocket blocked, falling back to Polling...');
-      }
-    });
-
-    const connectionTimeout = setTimeout(() => {
-      if (!socket.connected) {
-        setSocketStatus('restricted');
-      }
-    }, 10000); // 10s for initial handshake
-
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       if (session) {
-        // Only reconnect if token is different to avoid churn
         if (socket.auth?.token !== session.access_token) {
           socket.auth = { token: session.access_token };
           if (socket.connected) {
             socket.disconnect().connect();
           } else {
-            // Lazy-load reconnection
-            setTimeout(() => {
-              if (!socket.connected) socket.connect();
-            }, 1000);
+            socket.connect();
           }
         }
       } else {
@@ -116,62 +85,15 @@ const App = () => {
 
     return () => {
       subscription?.unsubscribe();
-      clearTimeout(connectionTimeout);
-      socket.off('connect');
-      socket.off('connect_error');
     };
   }, []);
 
-  // Global "Firewall Blocked" Fallback UI
-  if (isDatabaseBlocked) {
-    return (
-      <div className="flex min-h-screen w-full flex-col items-center justify-center bg-slate-950 p-8 text-center">
-        <div className="bg-red-500/10 border border-red-500/20 rounded-3xl p-8 max-w-md shadow-2xl">
-          <div className="bg-red-500/20 rounded-full h-16 w-16 flex items-center justify-center mx-auto mb-6">
-            <WifiOff className="h-8 w-8 text-red-500" />
-          </div>
-          <h2 className="text-2xl font-black text-slate-100 mb-4 px-3">Database Connection Denied</h2>
-          <p className="text-slate-400 mb-8 leading-relaxed px-2">
-            Your institutional LAN firewall is blocking the connection to the Arena's database. This is common in some schools and offices.
-          </p>
-          <button 
-            onClick={() => window.location.reload()}
-            className="w-full flex items-center justify-center gap-2 rounded-xl bg-cyan-500 px-6 py-4 font-black text-slate-950 transition-all hover:bg-cyan-400"
-          >
-            <RefreshCw className="h-5 w-5" />
-            RETRY WITH VPN
-          </button>
-        </div>
-      </div>
-    );
-  }
-
   if (isAuthLoading) {
-    return (
-      <div className="flex h-screen w-full items-center justify-center bg-slate-950">
-        <div className="text-slate-300 animate-pulse font-medium text-lg">Initializing The Socratic Arena...</div>
-      </div>
-    );
+    return null; // index.html skeleton spinner is already visible
   }
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200">
-      {/* LAN Survival Alert Bar */}
-      {socketStatus === 'restricted' && (
-        <div className="bg-amber-500 text-slate-950 py-2 px-4 flex items-center justify-center gap-4 animate-in slide-in-from-top duration-500">
-          <AlertTriangle className="h-4 w-4 shrink-0" />
-          <p className="text-xs font-bold leading-none">
-            Restricted network detected. Real-time features might be delayed.
-          </p>
-          <button 
-            className="text-[10px] underline font-black uppercase tracking-widest px-2"
-            onClick={() => window.open('https://help.openai.com/en/articles/6392271-how-to-fix-network-issues', '_blank')}
-          >
-            Why?
-          </button>
-        </div>
-      )}
-
       {/* Render persistent Navbar only for authenticated users */}
       {session && <Navbar user={session.user} socket={socket} onCreateArena={() => { setShowCreateDialog(true); setCreateTopic(''); setCreateQuestion(''); setCreateStatus('idle'); setCreateFeedback(''); }} onJoinArena={() => { setShowJoinDialog(true); setJoinCode(''); setJoinStatus('idle'); setJoinFeedback(''); }} />}
 

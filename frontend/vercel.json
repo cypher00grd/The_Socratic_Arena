@@ -1,13 +1,31 @@
 {
+  "headers": [
+    {
+      "source": "/assets/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+      ]
+    },
+    {
+      "source": "/(.*).png",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+      ]
+    },
+    {
+      "source": "/(.*).ico",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+      ]
+    },
+    {
+      "source": "/manifest.webmanifest",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=86400" }
+      ]
+    }
+  ],
   "rewrites": [
-    {
-      "source": "/socket.io/(.*)",
-      "destination": "https://the-socratic-arena.onrender.com/socket.io/$1"
-    },
-    {
-      "source": "/api/(.*)",
-      "destination": "https://the-socratic-arena.onrender.com/api/$1"
-    },
     {
       "source": "/(.*)",
       "destination": "/index.html"

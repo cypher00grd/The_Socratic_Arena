@@ -2,49 +2,59 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/png" href="/pwa-192x192.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <meta name="theme-color" content="#020617" />
     <meta name="description" content="The Socratic Arena — Where ideas clash and intelligence prevails." />
-    
-    <!-- PWA / Mobile Shell Optimizations -->
-    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <title>The Socratic Arena | Intellectual Combat</title>
+
+    <!-- Favicon: tiny 32x32 PNG (0.5 KB) — loads instantly even on throttled LANs -->
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon.ico" />
+
+    <!-- PWA / Mobile Shell -->
+    <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Socratic Arena" />
-    
-    <!-- Preload Critical Assets -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    
-    <title>The Socratic Arena | Intellectual Combat</title>
+
+    <!-- DNS Prefetch: resolve Supabase domain BEFORE JS even loads -->
+    <link rel="dns-prefetch" href="https://zjnpkxmtxayyvfpndfah.supabase.co" />
+    <link rel="preconnect" href="https://zjnpkxmtxayyvfpndfah.supabase.co" crossorigin />
+
+    <!-- Instant Dark Background: prevents white flash on any network -->
+    <style>
+      html, body { margin: 0; padding: 0; background: #020617; }
+      #root { min-height: 100vh; background: #020617; }
+      .app-skeleton { display:flex; min-height:100vh; align-items:center; justify-content:center; background:#020617; }
+      .app-skeleton-pulse { width:40px; height:40px; border-radius:50%; border:3px solid transparent; border-top-color:#06b6d4; animation:sk-spin .8s linear infinite; }
+      @keyframes sk-spin { to { transform:rotate(360deg); } }
+    </style>
   </head>
   <body>
-    <div id="root"></div>
+    <!-- Instant skeleton: shows a branded loading spinner within 0ms, even before JS downloads -->
+    <div id="root">
+      <div class="app-skeleton">
+        <div class="app-skeleton-pulse"></div>
+      </div>
+    </div>
 
-    <!-- Network Safety Net (Firewall Detection) -->
+    <!-- Network Safety Net: if JS completely fails after 20s, show a diagnostic -->
     <script>
       (function() {
         window.__APP_LOAD_TIMEOUT__ = setTimeout(function() {
           if (!window.__SOCRATIC_ARENA_INITIALIZED__) {
             var root = document.getElementById('root');
-            if (root && root.innerHTML === '') {
-              root.innerHTML = `
-                <div style="display:flex;min-height:100vh;width:100%;flex-direction:column;align-items:center;justify-content:center;background-color:#020617;color:#94a3b8;font-family:sans-serif;padding:2rem;text-align:center;">
-                  <div style="background-color:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:1rem;padding:2rem;max-width:28rem;">
-                    <div style="color:#ef4444;font-size:3rem;margin-bottom:1rem;">⚠️</div>
-                    <h2 style="color:#f1f5f9;font-size:1.5rem;font-weight:bold;margin-bottom:0.5rem;">Regional Connectivity Issue?</h2>
-                    <p style="margin-bottom:1.5rem;font-size:0.875rem;line-height:1.5;">The Arena is taking too long to load. Your institutional firewall or LAN might be restricting some battle-critical resources.</p>
-                    <div style="display:flex;flex-direction:column;gap:0.75rem;">
-                      <button onclick="window.location.reload()" style="background-color:#06b6d4;color:#020617;border:none;border-radius:0.5rem;padding:0.75rem;font-weight:bold;cursor:pointer;transition:background-color 0.2s;">Force Reload Arena</button>
-                      <p style="font-size:0.75rem;color:#64748b;">Tip: Try using a VPN or Mobile Hotspot if this persists.</p>
-                    </div>
-                  </div>
-                </div>
-              `;
-            }
+            root.innerHTML =
+              '<div style="display:flex;min-height:100vh;width:100%;flex-direction:column;align-items:center;justify-content:center;background-color:#020617;color:#94a3b8;font-family:system-ui,sans-serif;padding:2rem;text-align:center;">' +
+                '<div style="background-color:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:1rem;padding:2rem;max-width:28rem;">' +
+                  '<div style="color:#ef4444;font-size:2.5rem;margin-bottom:1rem;">⚠️</div>' +
+                  '<h2 style="color:#f1f5f9;font-size:1.25rem;font-weight:bold;margin-bottom:0.5rem;">Slow Network Detected</h2>' +
+                  '<p style="margin-bottom:1.5rem;font-size:0.8rem;line-height:1.5;">The Arena is loading slowly. This may be caused by your network configuration.</p>' +
+                  '<button onclick="window.location.reload()" style="background-color:#06b6d4;color:#020617;border:none;border-radius:0.5rem;padding:0.75rem 1.5rem;font-weight:bold;cursor:pointer;width:100%;">Retry</button>' +
+                  '<p style="font-size:0.7rem;color:#64748b;margin-top:0.75rem;">Tip: Use a VPN or Mobile Hotspot if on a restrictive LAN.</p>' +
+                '</div>' +
+              '</div>';
           }
-        }, 15000); // Trigger after 15s if app hasn't signaled load
+        }, 20000);
       })();
     </script>
 

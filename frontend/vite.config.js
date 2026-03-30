@@ -4,24 +4,11 @@ import { VitePWA } from 'vite-plugin-pwa'
 
 // https://vite.dev/config/
 export default defineConfig({
-  server: {
-    proxy: {
-      '/socket.io': {
-        target: 'http://localhost:5000',
-        ws: true,
-        changeOrigin: true
-      },
-      '/api': {
-        target: 'http://localhost:5000',
-        changeOrigin: true
-      }
-    }
-  },
   plugins: [
     react(),
     VitePWA({
-      registerType: 'prompt', // CRITICAL: Forces the 'Reload to Update' prompt
-      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'masked-icon.svg', 'vite.svg'],
+      registerType: 'prompt',
+      includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'pwa-192x192.png', 'pwa-512x512.png'],
       manifest: {
         name: 'The Socratic Arena',
         short_name: 'SocraticArena',
