@@ -8,8 +8,8 @@ import Navbar from './components/Navbar';
 import Login from './components/Login';
 import Dashboard from './components/Dashboard';
 import ErrorBoundary from './components/ErrorBoundary';
-import ReloadPrompt from './components/ReloadPrompt';
 import OfflineToast from './components/OfflineToast';
+import { useRegisterSW } from 'virtual:pwa-register/react';
 
 // Heavy sub-pages (Lazy load to reduce initial bundle size)
 const Explore = lazy(() => import('./components/Explore'));
@@ -44,6 +44,15 @@ const App = () => {
   const [joinFeedback, setJoinFeedback] = useState('');
 
   const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
+
+  // PWA Service Worker — lifted here so upgrade state flows into NotificationBell
+  const {
+    needRefresh: [needRefresh, setNeedRefresh],
+    updateServiceWorker,
+  } = useRegisterSW({
+    onRegistered(r) { console.log('[PWA] SW Registered:', r); },
+    onRegisterError(error) { console.error('[PWA] SW Registration Error:', error); },
+  });
 
   useEffect(() => {
     // Auth Resilience: Retry with Exponential Backoff (500ms, 1s, 2s)
@@ -106,7 +115,7 @@ const App = () => {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-200">
       {/* Render persistent Navbar only for authenticated users */}
-      {session && <Navbar user={session.user} socket={socket} onCreateArena={() => { setShowCreateDialog(true); setCreateTopic(''); setCreateQuestion(''); setCreateStatus('idle'); setCreateFeedback(''); }} onJoinArena={() => { setShowJoinDialog(true); setJoinCode(''); setJoinStatus('idle'); setJoinFeedback(''); }} />}
+      {session && <Navbar user={session.user} socket={socket} needRefresh={needRefresh} setNeedRefresh={setNeedRefresh} updateServiceWorker={updateServiceWorker} onCreateArena={() => { setShowCreateDialog(true); setCreateTopic(''); setCreateQuestion(''); setCreateStatus('idle'); setCreateFeedback(''); }} onJoinArena={() => { setShowJoinDialog(true); setJoinCode(''); setJoinStatus('idle'); setJoinFeedback(''); }} />}
 
       {/* GLOBAL CREATE ARENA DIALOG */}
       {showCreateDialog && <CreateArenaDialog
@@ -188,7 +197,6 @@ const App = () => {
         </Routes>
       </Suspense>
 
-      <ReloadPrompt />
       <OfflineToast session={session} />
     </div>
   );

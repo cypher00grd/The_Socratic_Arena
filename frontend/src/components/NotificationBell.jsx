@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
-import { Bell, Swords, Check, X, Clock, CheckCircle2, XCircle, AlertTriangle, ChevronRight, Trash2 } from 'lucide-react';
+import { Bell, Swords, Check, X, Clock, CheckCircle2, XCircle, AlertTriangle, ChevronRight, Trash2, RefreshCw, Loader2, Sparkles } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
-const NotificationBell = ({ socket, user }) => {
+const NotificationBell = ({ socket, user, needRefresh, setNeedRefresh, updateServiceWorker }) => {
   const navigate = useNavigate();
   const [notifications, setNotifications] = useState(() => {
     try {
@@ -14,9 +14,10 @@ const NotificationBell = ({ socket, user }) => {
   const [respondingIds, setRespondingIds] = useState(new Set());
   const [respondedActions, setRespondedActions] = useState(new Map()); // challengeId -> 'accept' | 'decline'
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [upgradeStatus, setUpgradeStatus] = useState('idle'); // 'idle' | 'upgrading' | 'done'
   const panelRef = useRef(null);
 
-  const unreadCount = notifications.filter(n => !n.is_read).length;
+  const unreadCount = notifications.filter(n => !n.is_read).length + (needRefresh && upgradeStatus === 'idle' ? 1 : 0);
 
   // --- Fetch notifications on mount & socket connect ---
   useEffect(() => {
@@ -311,7 +312,7 @@ const NotificationBell = ({ socket, user }) => {
 
             {/* Notification List */}
             <div className="flex-1 overflow-y-auto custom-scrollbar">
-              {notifications.length === 0 ? (
+              {notifications.length === 0 && !needRefresh ? (
                 <div className="px-6 py-10 text-center">
                   <Bell className="h-8 w-8 text-slate-700 mx-auto mb-3" />
                   <p className="text-slate-500 text-sm font-medium">No notifications yet</p>
@@ -319,6 +320,77 @@ const NotificationBell = ({ socket, user }) => {
                 </div>
               ) : (
                 <div className="py-1">
+                  {/* PWA Upgrade Card — pinned at top */}
+                  {needRefresh && (
+                    <div className={`px-4 py-3 border-l-2 transition-all ${
+                      upgradeStatus === 'done' ? 'border-l-emerald-500 bg-emerald-950/20' : 'border-l-indigo-500 bg-indigo-950/20'
+                    }`}>
+                      <div className="flex items-start gap-3">
+                        <div className={`shrink-0 mt-0.5 rounded-lg p-1.5 border ${
+                          upgradeStatus === 'done'
+                            ? 'bg-emerald-500/10 border-emerald-500/30'
+                            : 'bg-indigo-500/10 border-indigo-500/30'
+                        }`}>
+                          {upgradeStatus === 'upgrading' ? (
+                            <Loader2 className="h-4 w-4 text-indigo-400 animate-spin" />
+                          ) : upgradeStatus === 'done' ? (
+                            <Sparkles className="h-4 w-4 text-emerald-400" />
+                          ) : (
+                            <RefreshCw className="h-4 w-4 text-indigo-400" />
+                          )}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-xs font-bold text-slate-200">
+                            {upgradeStatus === 'upgrading'
+                              ? 'Upgrading Arena...'
+                              : upgradeStatus === 'done'
+                                ? 'Arena Upgraded ✨'
+                                : 'Upgrade Available'}
+                          </p>
+                          <p className="text-xs text-slate-400 mt-0.5 leading-relaxed">
+                            {upgradeStatus === 'upgrading'
+                              ? 'Applying the latest improvements...'
+                              : upgradeStatus === 'done'
+                                ? 'Socratic Arena is now running the latest version.'
+                                : 'A newer, more powerful version of Socratic Arena is ready.'}
+                          </p>
+
+                          {upgradeStatus === 'idle' && (
+                            <div className="flex items-center gap-2 mt-2.5">
+                              <button
+                                onClick={async () => {
+                                  setUpgradeStatus('upgrading');
+                                  try {
+                                    await updateServiceWorker(true);
+                                    setUpgradeStatus('done');
+                                    setTimeout(() => {
+                                      window.location.reload();
+                                    }, 1500);
+                                  } catch {
+                                    setUpgradeStatus('done');
+                                    setTimeout(() => window.location.reload(), 1500);
+                                  }
+                                }}
+                                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 bg-indigo-600/20 hover:bg-indigo-600/30 text-indigo-300 font-bold text-[11px] rounded-lg border border-indigo-500/30 transition-all"
+                              >
+                                <RefreshCw className="h-3 w-3" />
+                                Upgrade
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setNeedRefresh(false);
+                                }}
+                                className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-[11px] rounded-lg border border-slate-600/50 transition-all"
+                              >
+                                <X className="h-3 w-3" />
+                                Dismiss
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  )}
                   {notifications.map((notif) => {
                     const expired = isExpired(notif);
                     const challengeId = notif.metadata?.challenge_id;
