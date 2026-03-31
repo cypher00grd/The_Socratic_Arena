@@ -92,7 +92,20 @@ const Lobby = ({ socket, user }) => {
 
     const handlePrivateError = ({ message }) => {
       setPrivateError(message);
-      setTimeout(() => setPrivateError(null), 4000);
+      
+      // If debate has ended, redirect back after showing the error
+      if (message && (message.includes('already ended') || message.includes('expired') || message.includes('already full'))) {
+        setTimeout(() => {
+          // Navigate back to previous page, or default to explore
+          if (window.history.length > 1) {
+            navigate(-1);
+          } else {
+            navigate('/explore');
+          }
+        }, 3000);
+      } else {
+        setTimeout(() => setPrivateError(null), 4000);
+      }
     };
 
     const handleStatusChange = () => {

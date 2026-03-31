@@ -357,6 +357,17 @@ setInterval(async () => {
         ];
         await supabase.from('notifications').insert(expiryNotifs);
 
+        // Transform existing challenge_sent and challenge_invite notifications to expired
+        await supabase.from('notifications')
+          .update({ type: 'challenge_expired', title: 'Challenge Expired', is_read: false })
+          .eq('type', 'challenge_sent')
+          .filter('metadata->>challenge_id', 'eq', ch.id);
+        
+        await supabase.from('notifications')
+          .update({ type: 'challenge_expired', title: 'Challenge Expired', is_read: false })
+          .eq('type', 'challenge_invite')
+          .filter('metadata->>challenge_id', 'eq', ch.id);
+
         // Real-time push to online users
         [ch.challenger_id, ch.challenged_id].forEach(uid => {
           const sockets = userSocketMap.get(uid);
@@ -1959,6 +1970,25 @@ Respond STRICTLY with a valid JSON object and nothing else: {"found": true/false
       });
       if (notifErr) console.error('[Challenge] Notification insert error:', notifErr);
 
+      // --- Insert "Challenge Sent" notification for challenger (so they can track it) ---
+      const { error: challengerNotifErr } = await supabase.from('notifications').insert({
+        user_id: challengerId,
+        type: 'challenge_sent',
+        title: 'Challenge Sent!',
+        message: `You challenged ${targetProfile.username || 'a user'} to debate: "${topicTitle}"`,
+        metadata: {
+          challenge_id: challenge.id,
+          challenged_id: targetUserId,
+          challenged_name: targetProfile.username || 'User',
+          topic_id: topicId,
+          topic_title: topicTitle,
+          arena_code: arenaCode,
+          challenger_stance: challengerStance || 'Random',
+          expires_at: expiresAt
+        }
+      });
+      if (challengerNotifErr) console.error('[Challenge] Challenger notification insert error:', challengerNotifErr);
+
       // --- Real-time delivery ---
       emitToUser(targetUserId, 'challenge_received', {
         challenge_id: challenge.id,
@@ -1976,6 +2006,9 @@ Respond STRICTLY with a valid JSON object and nothing else: {"found": true/false
         target_username: targetProfile.username || 'User',
         topic_title: topicTitle
       });
+
+      // Refresh challenger's notification list to show the new "Challenge Sent" notification
+      socket.emit('notification_new');
 
       console.log(`[Challenge] ${challengerName} (${challengerId}) challenged ${targetProfile.username} (${targetUserId}) to "${topicTitle}" | Code: ${arenaCode} | Expires: ${expiresAt}`);
     } catch (err) {
@@ -2109,6 +2142,29 @@ Respond STRICTLY with a valid JSON object and nothing else: {"found": true/false
           console.warn(`[Challenge] Could not find invite notification to transform for user ${userId}, challenge ${challengeId}`);
         }
 
+        // --- Transform the challenger's "challenge_sent" notification to "challenge_accepted" ---
+        const { data: sentNotif } = await supabase.from('notifications')
+          .select('id, metadata')
+          .eq('user_id', challenge.challenger_id)
+          .eq('type', 'challenge_sent')
+          .filter('metadata->>challenge_id', 'eq', challengeId)
+          .maybeSingle();
+          
+        if (sentNotif) {
+          await supabase.from('notifications').update({
+            type: 'challenge_accepted',
+            title: 'Challenge Accepted!',
+            message: `${challengedName} accepted your challenge for "${challenge.topic_title}"!`,
+            is_read: false, // Mark as unread so challenger sees update
+            metadata: {
+              ...sentNotif.metadata,
+              arena_id: arena.id,
+              arena_code: challenge.arena_code
+            }
+          }).eq('id', sentNotif.id);
+          console.log(`[Challenge] Transformed sent notification ${sentNotif.id} to accepted for challenger ${challenge.challenger_id}`);
+        }
+
         // --- Emit to both users ---
         const acceptPayload = {
           challenge_id: challengeId,
@@ -2161,6 +2217,28 @@ Respond STRICTLY with a valid JSON object and nothing else: {"found": true/false
             }
           }).eq('id', inviteNotif.id);
           console.log(`[Challenge] Transformed invite notification ${inviteNotif.id} to declined for user ${userId}`);
+        }
+
+        // --- Transform the challenger's "challenge_sent" notification to "challenge_declined" ---
+        const { data: sentNotif } = await supabase.from('notifications')
+          .select('id, metadata')
+          .eq('user_id', challenge.challenger_id)
+          .eq('type', 'challenge_sent')
+          .filter('metadata->>challenge_id', 'eq', challengeId)
+          .maybeSingle();
+          
+        if (sentNotif) {
+          await supabase.from('notifications').update({
+            type: 'challenge_declined',
+            title: 'Challenge Declined',
+            message: `${challengedName} declined your challenge for "${challenge.topic_title}".`,
+            is_read: false, // Mark as unread so challenger sees update
+            metadata: {
+              ...sentNotif.metadata,
+              status: 'declined'
+            }
+          }).eq('id', sentNotif.id);
+          console.log(`[Challenge] Transformed sent notification ${sentNotif.id} to declined for challenger ${challenge.challenger_id}`);
         }
 
         emitToUser(challenge.challenger_id, 'challenge_declined', {

@@ -138,6 +138,8 @@ const NotificationBell = ({ socket, user, needRefresh, setNeedRefresh, updateSer
     };
 
     const handleChallengeSent = (data) => {
+      // Refresh notifications to show the new "Challenge Sent" entry
+      socket.emit('fetch_notifications');
       setToast({
         type: 'challenge_sent',
         message: `Challenge sent to ${data.target_username} for "${data.topic_title}"!`
@@ -167,6 +169,12 @@ const NotificationBell = ({ socket, user, needRefresh, setNeedRefresh, updateSer
       socket.emit('fetch_notifications');
     };
 
+    // Listen for match_ended to refresh notification statuses (remove stale "Enter Lobby" buttons)
+    const handleMatchEnded = ({ matchId }) => {
+      console.log('[NotificationBell] match_ended received, refreshing notifications...');
+      socket.emit('fetch_notifications');
+    };
+
     socket.on('notifications_list', handleList);
     socket.on('challenge_received', handleChallengeReceived);
     socket.on('challenge_accepted', handleChallengeAccepted);
@@ -176,6 +184,7 @@ const NotificationBell = ({ socket, user, needRefresh, setNeedRefresh, updateSer
     socket.on('challenge_response_confirmed', handleResponseConfirmed);
     socket.on('notification_new', handleNotificationNew);
     socket.on('notifications_marked_read', handleMarkedRead);
+    socket.on('match_ended', handleMatchEnded);
 
     return () => {
       socket.off('notifications_list', handleList);
@@ -187,6 +196,7 @@ const NotificationBell = ({ socket, user, needRefresh, setNeedRefresh, updateSer
       socket.off('challenge_response_confirmed', handleResponseConfirmed);
       socket.off('notification_new', handleNotificationNew);
       socket.off('notifications_marked_read', handleMarkedRead);
+      socket.off('match_ended', handleMatchEnded);
     };
   }, [socket, user, navigate]);
 
@@ -244,6 +254,7 @@ const NotificationBell = ({ socket, user, needRefresh, setNeedRefresh, updateSer
   const getNotifIcon = (type) => {
     switch (type) {
       case 'challenge_invite': return <Swords className="h-4 w-4 text-cyan-400" />;
+      case 'challenge_sent': return <Swords className="h-4 w-4 text-indigo-400" />;
       case 'challenge_accepted': return <CheckCircle2 className="h-4 w-4 text-emerald-400" />;
       case 'challenge_declined': return <XCircle className="h-4 w-4 text-rose-400" />;
       case 'challenge_expired': return <Clock className="h-4 w-4 text-amber-400" />;
@@ -254,6 +265,7 @@ const NotificationBell = ({ socket, user, needRefresh, setNeedRefresh, updateSer
   const getNotifBorder = (type) => {
     switch (type) {
       case 'challenge_invite': return 'border-l-cyan-500';
+      case 'challenge_sent': return 'border-l-indigo-500';
       case 'challenge_accepted': return 'border-l-emerald-500';
       case 'challenge_declined': return 'border-l-rose-500';
       case 'challenge_expired': return 'border-l-amber-500';
@@ -267,14 +279,15 @@ const NotificationBell = ({ socket, user, needRefresh, setNeedRefresh, updateSer
       case 'challenge_accepted': return 'bg-emerald-950/90 border-emerald-500/50 text-emerald-300';
       case 'challenge_declined': return 'bg-rose-950/90 border-rose-500/50 text-rose-300';
       case 'challenge_sent': return 'bg-indigo-950/90 border-indigo-500/50 text-indigo-300';
+      case 'challenge_expired': return 'bg-amber-950/90 border-amber-500/50 text-amber-300';
       case 'error': return 'bg-red-950/90 border-red-500/50 text-red-300';
       default: return 'bg-slate-900/90 border-slate-500/50 text-slate-300';
     }
   };
 
-  // Check if a challenge_invite notification is still actionable
+  // Check if a challenge_invite or challenge_sent notification is expired
   const isExpired = (notif) => {
-    if (notif.type !== 'challenge_invite') return false;
+    if (notif.type !== 'challenge_invite' && notif.type !== 'challenge_sent') return false;
     const expires = notif.metadata?.expires_at;
     if (!expires) return false;
     return new Date(expires) < new Date();
@@ -534,6 +547,23 @@ const NotificationBell = ({ socket, user, needRefresh, setNeedRefresh, updateSer
                               <div className="mt-2 flex items-center gap-1.5 text-[10px] text-amber-500 font-bold uppercase">
                                 <Clock className="h-3 w-3" /> Challenge Expired
                               </div>
+                            )}
+
+                            {/* Pending/Expired status for challenge_sent (challenger's view) */}
+                            {notif.type === 'challenge_sent' && (
+                              expired ? (
+                                <div className="mt-2 flex items-center gap-1.5 text-[10px] text-amber-500 font-bold uppercase">
+                                  <Clock className="h-3 w-3" /> Challenge Expired
+                                </div>
+                              ) : (
+                                <div className="mt-2 flex items-center gap-1.5 text-[10px] text-indigo-400 font-medium">
+                                  <span className="relative flex h-2 w-2">
+                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
+                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-indigo-500"></span>
+                                  </span>
+                                  Awaiting Response...
+                                </div>
+                              )
                             )}
 
                             {/* Navigate to lobby for accepted challenges (Fix #6 & #7: works for both users) */}
