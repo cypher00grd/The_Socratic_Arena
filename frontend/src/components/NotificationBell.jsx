@@ -480,20 +480,26 @@ const NotificationBell = ({ socket, user, needRefresh, setNeedRefresh, updateSer
 
                             {/* Navigate to lobby for accepted challenges (Fix #6 & #7: works for both users) */}
                             {notif.type === 'challenge_accepted' && notif.metadata?.arena_code && (
-                              <button
-                                onClick={() => {
-                                  setIsOpen(false);
-                                  navigate(`/lobby/${notif.metadata.topic_id}`, {
-                                    state: {
-                                      topic: { id: notif.metadata.topic_id, title: notif.metadata.topic_title },
-                                      arenaCode: notif.metadata.arena_code
-                                    }
-                                  });
-                                }}
-                                className="mt-2 flex items-center gap-1 text-[11px] text-cyan-400 hover:text-cyan-300 font-bold transition"
-                              >
-                                Enter Lobby <ChevronRight className="h-3 w-3" />
-                              </button>
+                              notif.metadata?.match_status && notif.metadata.match_status !== 'active' ? (
+                                <div className="mt-2 flex items-center gap-1.5 text-[10px] text-amber-500 font-bold uppercase">
+                                  <Clock className="h-3 w-3" /> Debate {notif.metadata.match_status === 'abandoned' ? 'Expired' : 'Ended'}
+                                </div>
+                              ) : (
+                                <button
+                                  onClick={() => {
+                                    setIsOpen(false);
+                                    navigate(`/lobby/${notif.metadata.topic_id}`, {
+                                      state: {
+                                        topic: { id: notif.metadata.topic_id, title: notif.metadata.topic_title },
+                                        arenaCode: notif.metadata.arena_code
+                                      }
+                                    });
+                                  }}
+                                  className="mt-2 flex items-center gap-1 text-[11px] text-cyan-400 hover:text-cyan-300 font-bold transition"
+                                >
+                                  Enter Lobby <ChevronRight className="h-3 w-3" />
+                                </button>
+                              )
                             )}
                           </div>
                         </div>

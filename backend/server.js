@@ -2178,6 +2178,30 @@ Respond STRICTLY with a valid JSON object and nothing else: {"found": true/false
         return socket.emit('notifications_list', { notifications: [], error: 'Failed to fetch notifications.' });
       }
 
+      // Check if any notifications are challenge accepted with an arena_id, and attach match status
+      if (data && data.length > 0) {
+        const arenaIds = data
+          .filter(n => n.type === 'challenge_accepted' && n.metadata?.arena_id)
+          .map(n => n.metadata.arena_id);
+          
+        if (arenaIds.length > 0) {
+          const { data: matches } = await supabase
+            .from('matches')
+            .select('id, status')
+            .in('id', arenaIds);
+
+          if (matches) {
+            const matchMap = Object.fromEntries(matches.map(m => [m.id, m.status]));
+            data.forEach(n => {
+              if (n.type === 'challenge_accepted' && n.metadata?.arena_id) {
+                // Determine if match status is active, completed, abandoned, etc.
+                n.metadata.match_status = matchMap[n.metadata.arena_id] || 'unknown';
+              }
+            });
+          }
+        }
+      }
+
       socket.emit('notifications_list', { notifications: data || [] });
     } catch (err) {
       console.error('[Notifications] fetch_notifications error:', err);

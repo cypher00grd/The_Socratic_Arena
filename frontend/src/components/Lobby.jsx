@@ -238,20 +238,7 @@ const Lobby = ({ socket, user }) => {
             </p>
           </header>
 
-          {/* Connection Status Banner (for Cold Starts) */}
-          {!isSocketConnected && (
-            <div className="w-full max-w-md mb-6 animate-pulse">
-              <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 flex items-center gap-4">
-                <div className="shrink-0 bg-amber-500/20 rounded-full p-2">
-                  <Clock className="h-5 w-5 text-amber-400" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-bold text-amber-200">Waking up the Arena...</h3>
-                  <p className="text-[11px] text-amber-500/80 leading-tight">Backend is spinning up (Render Cold Start). On some LANs, this might take 30-50s.</p>
-                </div>
-              </div>
-            </div>
-          )}
+          {/* Connection Status Banner (for Cold Starts) Removed as per user request */}
 
           {/* Arena Code Badge */}
           {arenaCode && !isPaired && (
