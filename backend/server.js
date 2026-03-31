@@ -1059,7 +1059,26 @@ io.on('connection', (socket) => {
     }
 
     // Verify it's the player's turn
-    const playerRole = room.players.critic === socket.id ? 'Critic' : 'Defender';
+    const userId = socket.verifiedUserId;
+    let playerRole = null;
+    
+    // Robust check: match by authenticated User ID
+    if (userId) {
+      if (room.critic_id === userId) playerRole = 'Critic';
+      else if (room.defender_id === userId) playerRole = 'Defender';
+    }
+    
+    // Fallback: match by Socket ID
+    if (!playerRole) {
+      if (room.players.critic === socket.id) playerRole = 'Critic';
+      else if (room.players.defender === socket.id) playerRole = 'Defender';
+    }
+
+    if (!playerRole) {
+      socket.emit('error', { message: 'You are not a participant in this match' });
+      return;
+    }
+
     if (playerRole !== room.activeSpeaker) {
       socket.emit('error', { message: 'Not your turn' });
       return;
@@ -1110,8 +1129,23 @@ io.on('connection', (socket) => {
     if (!room || room.status !== 'active') return;
 
     // Determine the caller's ID and role
-    const playerRole = room.players.critic === socket.id ? 'Critic' : 'Defender';
-    const callerId = playerRole === 'Critic' ? (room.critic_id || socket.id) : (room.defender_id || socket.id);
+    let playerRole = null;
+    let callerId = null;
+
+    if (userId) {
+      if (room.critic_id === userId) { playerRole = 'Critic'; callerId = userId; }
+      else if (room.defender_id === userId) { playerRole = 'Defender'; callerId = userId; }
+    }
+    
+    if (!playerRole) {
+      if (room.players.critic === socket.id) { playerRole = 'Critic'; callerId = room.critic_id || socket.id; }
+      else if (room.players.defender === socket.id) { playerRole = 'Defender'; callerId = room.defender_id || socket.id; }
+    }
+
+    if (!playerRole) {
+      socket.emit('error', { message: 'You are not a participant in this match.' });
+      return;
+    }
 
     // Check Lifeline availability
     if (!room.lifelines[callerId] || room.lifelines[callerId] <= 0) {
