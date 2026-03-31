@@ -209,10 +209,10 @@ const ProfileModal = ({ isOpen, onClose, viewUser, currentUserId, currentUser, s
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 sm:p-6">
             {/* Challenge Dialog Overlay */}
             {showChallengeDialog && (
-                <div className="absolute inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+                <div className="absolute inset-0 z-[60] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 sm:p-8">
                     <div 
                         ref={challengeContainerRef}
-                        className="w-full max-w-sm bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl flex flex-col max-h-[calc(100vh-7rem)] overflow-hidden" 
+                        className="w-[95%] sm:max-w-2xl bg-[#0f172a] border border-slate-700/60 rounded-3xl shadow-[0_30px_100px_-20px_rgba(0,0,0,0.9)] flex flex-col max-h-[calc(100vh-4rem)] sm:max-h-[85vh] overflow-hidden animate-in zoom-in-95 duration-300" 
                         onClick={(e) => e.stopPropagation()}
                     >
                         {/* Challenge Header */}
@@ -227,7 +227,7 @@ const ProfileModal = ({ isOpen, onClose, viewUser, currentUserId, currentUser, s
                         </div>
 
                         {/* Challenge Body */}
-                        <div className="flex-1 overflow-y-auto p-5 space-y-5">
+                        <div className="flex-1 overflow-y-auto p-6 sm:p-8 space-y-6 sm:space-y-8">
                             {/* Topic Selector */}
                             <div>
                                 <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Select Topic</label>
@@ -244,7 +244,7 @@ const ProfileModal = ({ isOpen, onClose, viewUser, currentUserId, currentUser, s
                                     </button>
 
                                     {isDropdownOpen && (
-                                        <div className="relative mt-3 bg-slate-950/40 backdrop-blur-xl border-2 border-cyan-500/30 rounded-2xl shadow-inner z-10 max-h-[350px] sm:max-h-[500px] overflow-hidden flex flex-col animate-in slide-in-from-top-2 duration-300">
+                                        <div className="relative mt-3 bg-slate-950/40 backdrop-blur-xl border-2 border-cyan-500/30 rounded-2xl shadow-inner z-10 max-h-[350px] sm:max-h-[600px] overflow-hidden flex flex-col animate-in slide-in-from-top-2 duration-300">
                                             {/* Search inside dropdown */}
                                             <div className="p-3 border-b border-slate-800/80 shrink-0 bg-slate-950/50">
                                                 <div className="relative group">
