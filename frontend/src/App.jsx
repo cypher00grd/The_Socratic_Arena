@@ -335,7 +335,7 @@ function CreateArenaDialog({ createTopic, setCreateTopic, createQuestion, setCre
                       t.title && t.title.toLowerCase() === categoryText.toLowerCase()
                     );
                     if (!categoryExists) {
-                      await supabase.from('topics').insert({ title: categoryText, category: 'Community' });
+                      await supabase.from('topics').insert({ title: categoryText, category: 'General' });
                     }
                   }
                 }
@@ -377,7 +377,7 @@ function CreateArenaDialog({ createTopic, setCreateTopic, createQuestion, setCre
                     // Direct insert as fallback
                     const { data: checkAgain } = await supabase.from('topics').select('*').eq('title', questionText).single();
                     if (!checkAgain) {
-                      await supabase.from('topics').insert({ title: questionText, category: 'Community' });
+                      await supabase.from('topics').insert({ title: questionText, category: 'General' });
                     }
                     setCreateStatus('success');
                     setCreateFeedback('Arena created! Redirecting to lobby...');
@@ -385,7 +385,7 @@ function CreateArenaDialog({ createTopic, setCreateTopic, createQuestion, setCre
                   }, 15000);
                 } else {
                   // No socket: direct insert
-                  await supabase.from('topics').insert({ title: questionText, category: 'Community' });
+                  await supabase.from('topics').insert({ title: questionText, category: 'General' });
                   setCreateStatus('success');
                   setCreateFeedback('Arena created! Redirecting to lobby...');
                   setTimeout(() => navigateToLobby(questionText), 800);
