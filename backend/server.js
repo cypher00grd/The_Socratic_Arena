@@ -3059,7 +3059,6 @@ try {
     // Trigger auto-broadcast after server is ready
     broadcastUpgradeOnStartup();
   });
-  });
 } catch (error) {
   console.error('❌ Failed to start server:', error);
   process.exit(1);
